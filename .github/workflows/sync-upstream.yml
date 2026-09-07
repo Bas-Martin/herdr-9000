@@ -1,0 +1,46 @@
+name: Sync upstream Herdr
+
+on:
+  schedule:
+    - cron: "0 9 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout custom branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: custom
+
+      - name: Merge upstream master
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/herdrdev/herdr.git
+          git fetch --prune upstream master
+          git fetch origin custom
+          git switch --detach origin/custom
+
+          if ! git merge --no-edit upstream/master; then
+            git merge --abort || true
+            gh issue create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Upstream sync conflict" \
+              --body "The scheduled merge of herdrdev/herdr master into custom failed. Resolve the conflict locally, then rerun this workflow."
+            exit 1
+          fi
+
+          git push origin HEAD:custom
