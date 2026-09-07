@@ -1,0 +1,31 @@
+{
+  "name": "herdr-9000",
+  "version": "0.8.2-9000.1",
+  "description": "Herdr 9000 fork with the persistent project registry",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bas-Martin/herdr-9000.git"
+  },
+  "bin": {
+    "herdr9000": "bin/herdr9000.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
