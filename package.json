@@ -8,13 +8,13 @@
     "url": "https://github.com/Bas-Martin/herdr-9000.git"
   },
   "bin": {
-    "herdr9000": "bin/herdr9000.js"
+    "herdr9000": "packaging/npm/bin/herdr9000.js"
   },
   "files": [
-    "bin"
+    "packaging/npm/bin"
   ],
   "scripts": {
-    "postinstall": "node bin/postinstall.js"
+    "postinstall": "node packaging/npm/bin/postinstall.js"
   },
   "engines": {
     "node": ">=18"
