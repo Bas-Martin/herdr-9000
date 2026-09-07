@@ -1,0 +1,57 @@
+name: Assign upstream conflicts to Copilot
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  assign:
+    if: contains(github.event.issue.labels.*.name, 'agent-ready')
+    runs-on: ubuntu-latest
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      REPOSITORY: ${{ github.repository }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      COPILOT_ASSIGN_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+
+    steps:
+      - name: Explain missing Copilot token
+        if: env.COPILOT_ASSIGN_TOKEN == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "Copilot could not be assigned automatically. Add the COPILOT_ASSIGN_TOKEN Actions secret with the documented Copilot agent-assignment permissions, then rerun this workflow."
+          exit 1
+
+      - name: Assign issue to Copilot cloud agent
+        if: env.COPILOT_ASSIGN_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_ASSIGN_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg repo "$REPOSITORY" \
+            --arg branch "$DEFAULT_BRANCH" \
+            '{
+              assignees: ["copilot-swe-agent[bot]"],
+              agent_assignment: {
+                target_repo: $repo,
+                base_branch: $branch,
+                custom_instructions: "Resolve the upstream sync conflict described in this issue. Fetch herdrdev/herdr/master, merge it into the target branch, preserve all custom Herdr functionality, run the relevant checks, and open a draft pull request into the target branch. Do not force-push or remove unrelated changes.",
+                custom_agent: "",
+                model: ""
+              }
+            }' |
+          gh api \
+            --method POST \
+            "/repos/$REPOSITORY/issues/$ISSUE_NUMBER/assignees" \
+            --input -
