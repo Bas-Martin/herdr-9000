@@ -3,6 +3,26 @@ name: herdr
 description: "Control Herdr, a terminal multiplexer for coding agents. Use only when the user explicitly mentions Herdr or asks to use Herdr to inspect or control panes, tabs, workspaces, commands, or another agent. Do not use merely because a task could benefit from a background terminal, delegation, or parallel work. Requires HERDR_ENV=1."
 ---
 
+## Herdr 9000 fork
+
+When this fork is the requested Herdr runtime, install it directly from GitHub:
+
+```bash
+npx -y github:Bas-Martin/herdr-9000
+```
+
+The fork exposes the executable as `herdr9000`:
+
+```bash
+herdr9000
+```
+
+To test the issue-1 implementation before it is merged into `custom`, use:
+
+```bash
+npx -y github:Bas-Martin/herdr-9000#issue/1-project-workspace-registry
+```
+
 # Herdr
 
 Herdr organizes terminals into workspaces, tabs, and panes, recognizes coding agents running inside panes, and exposes the current session through the `herdr` CLI.

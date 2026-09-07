@@ -46,6 +46,26 @@ curl -fsSL https://herdr.dev/install.sh | sh
 
 or `brew install herdr` · `mise use -g herdr` · windows: `powershell -ExecutionPolicy Bypass -c "irm https://herdr.dev/install.ps1 | iex"` · [endpoint-protected Windows](https://herdr.dev/docs/windows-beta/) · [binaries](https://github.com/herdrdev/herdr/releases)
 
+### Herdr 9000 fork
+
+Install the fork directly from GitHub with npx:
+
+```bash
+npx -y github:Bas-Martin/herdr-9000
+```
+
+The executable provided by the fork is `herdr9000`:
+
+```bash
+herdr9000
+```
+
+To test the current issue-1 branch before it is merged into `custom`:
+
+```bash
+npx -y github:Bas-Martin/herdr-9000#issue/1-project-workspace-registry
+```
+
 then start it where the work lives:
 
 ```bash
