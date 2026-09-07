@@ -24,6 +24,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -39,7 +40,8 @@ jobs:
             gh issue create \
               --repo "$GITHUB_REPOSITORY" \
               --title "Upstream sync conflict" \
-              --body "The scheduled merge of herdrdev/herdr master into custom failed. Resolve the conflict locally, then rerun this workflow."
+              --label "agent-ready" \
+              --body "The scheduled merge of herdrdev/herdr/master into custom failed. Resolve the conflict, preserve custom functionality, and open a PR into custom. Workflow run: $RUN_URL"
             exit 1
           fi
 
