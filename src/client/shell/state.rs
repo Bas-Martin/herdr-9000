@@ -173,6 +173,11 @@ pub(super) struct ShellHitMap {
     pub(super) context_menu_rows: Vec<(Rect, usize)>,
     pub(super) overlay_primary: Rect,
     pub(super) overlay_clear: Rect,
+    pub(super) project_edit: Rect,
+    pub(super) project_rename: Rect,
+    pub(super) project_name: Rect,
+    pub(super) project_root: Rect,
+    pub(super) project_worktree_root: Rect,
     pub(super) overlay_cancel: Rect,
     pub(super) navigator_popup: Rect,
     pub(super) navigator_search: Rect,
@@ -342,14 +347,14 @@ pub(super) enum ClientShellOverlayKind {
     ContextMenu,
     GlobalMenu,
     Settings,
+    ProjectCreate,
+    ProjectSettings,
 }
 
 #[derive(Debug)]
 pub(super) enum ClientRenameTarget {
-    NewWorkspace {
-        source_workspace_id: Option<String>,
-        cwd: Option<String>,
-        suggested_name: String,
+    Project {
+        project_id: String,
     },
     Workspace {
         workspace_id: String,
@@ -567,6 +572,7 @@ pub(super) struct ClientWorktreeRemoveOverlay {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ClientContextMenuAction {
     Rename,
+    ProjectSettings,
     Close,
     NewWorktree,
     OpenWorktree,
@@ -626,6 +632,32 @@ pub(super) struct ClientConfirmCloseOverlay {
 }
 
 #[derive(Debug)]
+pub(super) struct ClientProjectSettingsOverlay {
+    pub(super) workspace_id: String,
+    pub(super) project: Option<crate::api::schema::ProjectInfo>,
+    pub(super) loading: bool,
+    pub(super) error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientProjectCreateField {
+    Name,
+    RootPath,
+    WorktreeRoot,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientProjectCreateOverlay {
+    pub(super) project_id: Option<String>,
+    pub(super) name: String,
+    pub(super) root_path: String,
+    pub(super) worktree_root: String,
+    pub(super) field: ClientProjectCreateField,
+    pub(super) error: Option<String>,
+    pub(super) submitting: bool,
+}
+
+#[derive(Debug)]
 pub(super) enum ClientShellOverlay {
     Onboarding,
     ProductAnnouncement(crate::app::state::ProductAnnouncementState),
@@ -638,6 +670,8 @@ pub(super) enum ClientShellOverlay {
     WorktreeOpen(ClientWorktreeOpenOverlay),
     WorktreeRemove(ClientWorktreeRemoveOverlay),
     ContextMenu(ClientContextMenuOverlay),
+    ProjectCreate(ClientProjectCreateOverlay),
+    ProjectSettings(ClientProjectSettingsOverlay),
     GlobalMenu(ClientGlobalMenuOverlay),
     Settings(ClientSettingsOverlay),
 }
@@ -655,6 +689,8 @@ impl ClientShellOverlay {
             Self::WorktreeCreate(_) => ClientShellOverlayKind::WorktreeCreate,
             Self::WorktreeOpen(_) => ClientShellOverlayKind::WorktreeOpen,
             Self::WorktreeRemove(_) => ClientShellOverlayKind::WorktreeRemove,
+            Self::ProjectCreate(_) => ClientShellOverlayKind::ProjectCreate,
+            Self::ProjectSettings(_) => ClientShellOverlayKind::ProjectSettings,
             Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
@@ -718,6 +754,11 @@ pub(super) enum PendingEndpointKind {
         generation: u64,
         session_generation: u64,
     },
+    ProjectList {
+        workspace_id: String,
+    },
+    ProjectCreate,
+    ProjectUpdate,
 }
 
 pub(super) struct PendingEndpointRequest {

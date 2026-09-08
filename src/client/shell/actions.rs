@@ -66,22 +66,7 @@ impl ClientShellState {
                     return;
                 }
                 if action == crate::input::KeybindAction::NewWorkspace {
-                    if self.config.prompt_new_workspace_name {
-                        self.open_new_workspace_overlay();
-                    } else {
-                        self.push_endpoint_method(
-                            crate::api::schema::Method::WorkspaceCreate(
-                                crate::api::schema::WorkspaceCreateParams {
-                                    source_workspace_id: self.workspace_action_id(),
-                                    cwd: None,
-                                    focus: true,
-                                    label: None,
-                                    env: Default::default(),
-                                },
-                            ),
-                            outcome,
-                        );
-                    }
+                    self.open_new_workspace_overlay();
                     outcome.repaint = true;
                     return;
                 }
@@ -502,6 +487,45 @@ impl ClientShellState {
         repaint
     }
 
+    fn handle_project_list_result(
+        &mut self,
+        workspace_id: String,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        let workspace_cwd = self.snapshot.as_deref().and_then(|snapshot| {
+            snapshot
+                .workspaces
+                .iter()
+                .find(|workspace| workspace.workspace_id == workspace_id)
+                .map(|workspace| workspace.new_workspace_cwd.clone())
+        });
+        let (project, error) = match result {
+            Ok(crate::api::schema::ResponseResult::ProjectList { projects }) => {
+                let project = projects.into_iter().find(|project| {
+                    project.workspace_id.as_deref() == Some(workspace_id.as_str())
+                        || workspace_cwd.as_deref().is_some_and(|cwd| {
+                            project
+                                .root_path
+                                .trim_end_matches(['/', '\\'])
+                                .replace('\\', "/")
+                                == cwd.trim_end_matches(['/', '\\']).replace('\\', "/")
+                        })
+                });
+                (project, None)
+            }
+            Ok(_) => (None, Some("unexpected project list response".to_owned())),
+            Err(error) => (None, Some(error.message)),
+        };
+        if let Some(ClientShellOverlay::ProjectSettings(settings)) = self.overlay.as_mut() {
+            if settings.workspace_id == workspace_id {
+                settings.project = project;
+                settings.loading = false;
+                settings.error = error;
+            }
+        }
+        (true, Vec::new())
+    }
+
     pub(crate) fn handle_endpoint_result(
         &mut self,
         boot_id: &str,
@@ -560,6 +584,17 @@ impl ClientShellState {
                     ),
                 };
                 self.push_endpoint_notice(kind, notice_code, title, body);
+            }
+        }
+        if pending.method_name == "workspace.rename" {
+            if let Ok(crate::api::schema::ResponseResult::WorkspaceInfo { workspace }) = &result {
+                if let Some(ClientShellOverlay::ProjectSettings(settings)) = self.overlay.as_mut() {
+                    if settings.workspace_id == workspace.workspace_id {
+                        if let Some(project) = settings.project.as_mut() {
+                            project.name = workspace.label.clone();
+                        }
+                    }
+                }
             }
         }
         match pending.kind {
@@ -868,6 +903,74 @@ impl ClientShellState {
                     Err(_) => true,
                 };
                 return (repaint, Vec::new());
+            }
+            PendingEndpointKind::ProjectCreate => {
+                match result {
+                    Ok(crate::api::schema::ResponseResult::ProjectCreated { .. })
+                    | Ok(crate::api::schema::ResponseResult::ProjectOpened {
+                        created: true, ..
+                    }) => {
+                        self.overlay = None;
+                    }
+                    Ok(crate::api::schema::ResponseResult::ProjectOpened {
+                        created: false,
+                        ..
+                    }) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
+                            project.submitting = false;
+                            project.error = Some(
+                                "A project already exists for this repository or folder path."
+                                    .to_owned(),
+                            );
+                        }
+                    }
+                    Ok(_) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
+                            project.submitting = false;
+                            project.error = Some("Unexpected project response.".to_owned());
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
+                            project.submitting = false;
+                            project.error = Some(error.message);
+                        }
+                    }
+                }
+                return (true, Vec::new());
+            }
+            PendingEndpointKind::ProjectUpdate => {
+                match result {
+                    Ok(crate::api::schema::ResponseResult::ProjectInfo { .. }) => {
+                        self.overlay = None;
+                    }
+                    Ok(_) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
+                            project.submitting = false;
+                            project.error = Some("Unexpected project response.".to_owned());
+                        }
+                    }
+                    Err(error) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
+                            project.submitting = false;
+                            project.error = Some(error.message);
+                        }
+                    }
+                }
+                return (true, Vec::new());
+            }
+            PendingEndpointKind::ProjectList { workspace_id } => {
+                return self.handle_project_list_result(workspace_id, result);
             }
             kind @ (PendingEndpointKind::IntegrationList
             | PendingEndpointKind::IntegrationInstall) => {

@@ -109,6 +109,29 @@ impl App {
         let Some(index) = self.parse_workspace_id(&params.workspace_id) else {
             return workspace_not_found(id, &params.workspace_id);
         };
+        let Some(root_path) = self
+            .state
+            .workspaces
+            .get(index)
+            .map(|workspace| workspace.identity_cwd.clone())
+        else {
+            return workspace_not_found(id, &params.workspace_id);
+        };
+        let project_id = self
+            .state
+            .projects
+            .find_by_root(&root_path)
+            .map(|project| project.id.clone());
+        if let Some(project_id) = project_id {
+            let previous_projects = self.state.projects.clone();
+            if let Some(project) = self.state.projects.find_mut(&project_id) {
+                project.name = params.label.clone();
+            }
+            if let Err(err) = crate::persist::save_projects(&self.state.projects) {
+                self.state.projects = previous_projects;
+                return encode_error(id, "project_save_failed", err.to_string());
+            }
+        }
         let Some(ws) = self.state.workspaces.get_mut(index) else {
             return workspace_not_found(id, &params.workspace_id);
         };

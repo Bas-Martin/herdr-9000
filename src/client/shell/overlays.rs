@@ -6,6 +6,11 @@ mod worktree_overlays;
 #[derive(Default)]
 pub(crate) struct OverlayRender {
     pub(crate) primary: Rect,
+    pub(crate) project_edit: Rect,
+    pub(crate) project_rename: Rect,
+    pub(crate) project_name: Rect,
+    pub(crate) project_root: Rect,
+    pub(crate) project_worktree_root: Rect,
     pub(crate) clear: Rect,
     pub(crate) cancel: Rect,
     pub(crate) navigator_popup: Rect,
@@ -58,6 +63,8 @@ pub(crate) fn render_client_overlay(
             render_release_notes_overlay(b, v, &s.update_install_command, p)
         }
         ClientShellOverlay::Rename(v) => render_rename_overlay(b, v, p),
+        ClientShellOverlay::ProjectCreate(v) => render_project_create_overlay(b, v, p),
+        ClientShellOverlay::ProjectSettings(v) => render_project_settings_overlay(b, v, p),
         ClientShellOverlay::ConfirmClose(v) => render_confirm_close_overlay(b, v, p),
         ClientShellOverlay::Help(v) => render_help_overlay(b, v, k, p),
         ClientShellOverlay::Navigator(v) => {
@@ -665,6 +672,272 @@ fn render_rename_overlay(
         worktree_rows: Vec::new(),
         cursor: Some(crate::protocol::CursorState {
             x: (input.x + 1 + display_width(&v.input)).min(input.right() - 1),
+            y: input.y,
+            visible: true,
+            shape: 0,
+        }),
+        ..OverlayRender::default()
+    })
+}
+
+fn render_project_settings_overlay(
+    b: &mut Buffer,
+    v: &ClientProjectSettingsOverlay,
+    p: &Palette,
+) -> Option<OverlayRender> {
+    let q = popup(b.area, 72, 12)?;
+    let i = panel(b, q, p.accent, p.panel_bg)?;
+    let title = Style::default()
+        .fg(p.text)
+        .bg(p.panel_bg)
+        .add_modifier(Modifier::BOLD);
+    put_text(b, i.x, i.y, i.width, "project settings", title);
+    if v.loading {
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(2),
+            i.width,
+            "loading project...",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    } else if let Some(error) = v.error.as_deref() {
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(2),
+            i.width,
+            error,
+            Style::default().fg(p.red).bg(p.panel_bg),
+        );
+    } else if let Some(project) = v.project.as_ref() {
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(2),
+            i.width,
+            &format!("name: {}", project.name),
+            Style::default().fg(p.text).bg(p.panel_bg),
+        );
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(3),
+            i.width,
+            &format!("root: {}", project.root_path),
+            Style::default().fg(p.text).bg(p.panel_bg),
+        );
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(4),
+            i.width,
+            &format!(
+                "worktrees: {}",
+                project.worktree_root.as_deref().unwrap_or("global default")
+            ),
+            Style::default().fg(p.text).bg(p.panel_bg),
+        );
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(5),
+            i.width,
+            "e edit   r rename   o open   d delete",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    } else {
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(2),
+            i.width,
+            "No registered project matches this workspace.",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    }
+    let rs = row(i, &[10, 12, 12], 2, i.height.saturating_sub(2));
+    let [edit, rename, cancel] = rs.as_slice() else {
+        return None;
+    };
+    let button_style = Style::default().fg(p.text).bg(p.surface0);
+    button(b, *edit, " e edit ", button_style);
+    button(b, *rename, " r rename ", button_style);
+    button(b, *cancel, " esc close ", button_style);
+    Some(OverlayRender {
+        primary: v.project.is_some().then_some(*rename).unwrap_or_default(),
+        project_edit: v.project.is_some().then_some(*edit).unwrap_or_default(),
+        project_rename: v.project.is_some().then_some(*rename).unwrap_or_default(),
+        cancel: *cancel,
+        ..OverlayRender::default()
+    })
+}
+
+fn render_project_create_overlay(
+    b: &mut Buffer,
+    v: &ClientProjectCreateOverlay,
+    p: &Palette,
+) -> Option<OverlayRender> {
+    let q = popup(b.area, 72, 17)?;
+    let i = panel(b, q, p.accent, p.panel_bg)?;
+    let editing = v.project_id.is_some();
+    let title = Style::default()
+        .fg(p.text)
+        .bg(p.panel_bg)
+        .add_modifier(Modifier::BOLD);
+    put_text(
+        b,
+        i.x,
+        i.y,
+        i.width,
+        if editing {
+            "edit project"
+        } else {
+            "new workspace"
+        },
+        title,
+    );
+    put_text(
+        b,
+        i.x,
+        i.y.saturating_add(1),
+        i.width,
+        "Project name",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    let name_input = Rect::new(i.x, i.y.saturating_add(2), i.width, 1);
+    put_text(
+        b,
+        name_input.x,
+        name_input.y,
+        name_input.width,
+        &format!(" {}", v.name),
+        Style::default()
+            .fg(p.text)
+            .bg(if v.field == ClientProjectCreateField::Name {
+                p.surface1
+            } else {
+                p.surface0
+            }),
+    );
+    put_text(
+        b,
+        i.x,
+        i.y.saturating_add(4),
+        i.width,
+        "Repository / folder path",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    let root_input = Rect::new(i.x, i.y.saturating_add(5), i.width, 1);
+    put_text(
+        b,
+        root_input.x,
+        root_input.y,
+        root_input.width,
+        &format!(" {}", v.root_path),
+        Style::default()
+            .fg(p.text)
+            .bg(if v.field == ClientProjectCreateField::RootPath {
+                p.surface1
+            } else {
+                p.surface0
+            }),
+    );
+    put_text(
+        b,
+        i.x,
+        i.y.saturating_add(7),
+        i.width,
+        "Worktree folder",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    let worktree_root_input = Rect::new(i.x, i.y.saturating_add(8), i.width, 1);
+    put_text(
+        b,
+        worktree_root_input.x,
+        worktree_root_input.y,
+        worktree_root_input.width,
+        &format!(" {}", v.worktree_root),
+        Style::default()
+            .fg(p.text)
+            .bg(if v.field == ClientProjectCreateField::WorktreeRoot {
+                p.surface1
+            } else {
+                p.surface0
+            }),
+    );
+    let message_y = i.y.saturating_add(10);
+    if let Some(error) = v.error.as_deref() {
+        put_text(
+            b,
+            i.x,
+            message_y,
+            i.width,
+            error,
+            Style::default().fg(p.red).bg(p.panel_bg),
+        );
+    } else {
+        put_text(
+            b,
+            i.x,
+            message_y,
+            i.width,
+            if editing {
+                "Tab fields · Enter saves · Empty worktree = global default"
+            } else {
+                "Tab fields · Enter submits · Empty worktree = global default"
+            },
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    }
+    let rs = row(i, &[12, 12], 2, i.height.saturating_sub(2));
+    let [save, cancel] = rs.as_slice() else {
+        return None;
+    };
+    let save_style = Style::default()
+        .fg(contrast(p))
+        .bg(if v.submitting { p.overlay0 } else { p.accent })
+        .add_modifier(Modifier::BOLD);
+    button(
+        b,
+        *save,
+        if v.submitting {
+            if editing {
+                " saving "
+            } else {
+                " creating "
+            }
+        } else if editing {
+            " save "
+        } else {
+            " create "
+        },
+        save_style,
+    );
+    button(
+        b,
+        *cancel,
+        " esc cancel ",
+        Style::default().fg(p.text).bg(p.surface0),
+    );
+    let input = match v.field {
+        ClientProjectCreateField::Name => name_input,
+        ClientProjectCreateField::RootPath => root_input,
+        ClientProjectCreateField::WorktreeRoot => worktree_root_input,
+    };
+    let value = match v.field {
+        ClientProjectCreateField::Name => &v.name,
+        ClientProjectCreateField::RootPath => &v.root_path,
+        ClientProjectCreateField::WorktreeRoot => &v.worktree_root,
+    };
+    Some(OverlayRender {
+        primary: *save,
+        cancel: *cancel,
+        project_name: name_input,
+        project_root: root_input,
+        project_worktree_root: worktree_root_input,
+        cursor: Some(crate::protocol::CursorState {
+            x: (input.x + 1 + display_width(value)).min(input.right().saturating_sub(1)),
             y: input.y,
             visible: true,
             shape: 0,

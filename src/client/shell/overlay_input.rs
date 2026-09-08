@@ -321,30 +321,91 @@ impl ClientShellState {
     }
 
     pub(super) fn open_new_workspace_overlay(&mut self) {
-        let source_workspace_id = self.workspace_action_id();
-        let cwd = self.snapshot.as_deref().and_then(|snapshot| {
-            let workspace_id = source_workspace_id.as_deref()?;
-            snapshot
-                .workspaces
-                .iter()
-                .find(|workspace| workspace.workspace_id == workspace_id)
-                .map(|workspace| workspace.new_workspace_cwd.clone())
-        });
-        let suggested_name = cwd
-            .as_deref()
-            .map(std::path::Path::new)
-            .map(crate::workspace::derive_label_from_cwd)
-            .unwrap_or_else(|| "workspace".to_owned());
+        let name = String::new();
+        let root_path = {
+            #[cfg(windows)]
+            {
+                "C:\\Repository\\".to_owned()
+            }
+            #[cfg(not(windows))]
+            {
+                String::new()
+            }
+        };
+        self.overlay = Some(ClientShellOverlay::ProjectCreate(
+            ClientProjectCreateOverlay {
+                project_id: None,
+                name,
+                root_path,
+                worktree_root: String::new(),
+                field: ClientProjectCreateField::Name,
+                error: None,
+                submitting: false,
+            },
+        ));
+    }
+
+    pub(super) fn open_project_settings_overlay(
+        &mut self,
+        workspace_id: String,
+        outcome: &mut ClientShellInput,
+    ) {
+        self.overlay = Some(ClientShellOverlay::ProjectSettings(
+            ClientProjectSettingsOverlay {
+                workspace_id: workspace_id.clone(),
+                project: None,
+                loading: true,
+                error: None,
+            },
+        ));
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::ProjectList(crate::api::schema::EmptyParams::default()),
+            PendingEndpointKind::ProjectList { workspace_id },
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::ProjectSettings(settings)) = self.overlay.as_mut() {
+                settings.loading = false;
+                settings.error = Some("project list is unavailable".to_owned());
+            }
+        }
+    }
+
+    pub(super) fn open_project_rename_overlay(&mut self) {
+        let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
+            _ => None,
+        }) else {
+            return;
+        };
         self.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
-            title: "new workspace",
-            input: suggested_name.clone(),
-            replace_on_type: true,
-            target: ClientRenameTarget::NewWorkspace {
-                source_workspace_id,
-                cwd,
-                suggested_name,
+            title: "rename project",
+            input: project.name.clone(),
+            replace_on_type: false,
+            target: ClientRenameTarget::Project {
+                project_id: project.project_id.clone(),
             },
         }));
+    }
+
+    pub(super) fn open_project_edit_overlay(&mut self) {
+        let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.overlay = Some(ClientShellOverlay::ProjectCreate(
+            ClientProjectCreateOverlay {
+                project_id: Some(project.project_id),
+                name: project.name,
+                root_path: project.root_path,
+                worktree_root: project.worktree_root.unwrap_or_default(),
+                field: ClientProjectCreateField::RootPath,
+                error: None,
+                submitting: false,
+            },
+        ));
     }
 
     pub(super) fn open_rename_workspace_overlay(&mut self) {
@@ -441,6 +502,16 @@ impl ClientShellState {
             return true;
         }
         match self.overlay.as_mut() {
+            Some(ClientShellOverlay::ProjectCreate(project)) => {
+                let value = match project.field {
+                    ClientProjectCreateField::Name => &mut project.name,
+                    ClientProjectCreateField::RootPath => &mut project.root_path,
+                    ClientProjectCreateField::WorktreeRoot => &mut project.worktree_root,
+                };
+                value.push_str(text);
+                project.error = None;
+                true
+            }
             Some(ClientShellOverlay::Rename(rename)) => {
                 if rename.replace_on_type {
                     rename.input.clear();
@@ -459,12 +530,158 @@ impl ClientShellState {
                 navigator.query.push_str(text);
                 navigator.filter = None;
                 navigator.selected = None;
+
                 true
             }
             _ => false,
         }
     }
 
+    fn route_project_create_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) {
+        use crossterm::event::{KeyCode, KeyModifiers};
+        if key.code == KeyCode::Esc {
+            self.overlay = None;
+            outcome.repaint = true;
+            return;
+        }
+        if key.code == KeyCode::Tab
+            || key.code == KeyCode::BackTab
+            || key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::SHIFT)
+        {
+            if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                project.field = match project.field {
+                    ClientProjectCreateField::Name => ClientProjectCreateField::RootPath,
+                    ClientProjectCreateField::RootPath => ClientProjectCreateField::WorktreeRoot,
+                    ClientProjectCreateField::WorktreeRoot => ClientProjectCreateField::Name,
+                };
+                outcome.repaint = true;
+            }
+            return;
+        }
+        if key.code == KeyCode::Enter {
+            let field = match self.overlay.as_ref() {
+                Some(ClientShellOverlay::ProjectCreate(project)) => project.field,
+                _ => return,
+            };
+            match field {
+                ClientProjectCreateField::Name => {
+                    if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut()
+                    {
+                        project.field = ClientProjectCreateField::RootPath;
+                        outcome.repaint = true;
+                    }
+                }
+                ClientProjectCreateField::RootPath => {
+                    if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut()
+                    {
+                        project.field = ClientProjectCreateField::WorktreeRoot;
+                        outcome.repaint = true;
+                    }
+                }
+                ClientProjectCreateField::WorktreeRoot => self.submit_project_create(outcome),
+            }
+            return;
+        }
+        if key.code == KeyCode::Backspace {
+            if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                let value = match project.field {
+                    ClientProjectCreateField::Name => &mut project.name,
+                    ClientProjectCreateField::RootPath => &mut project.root_path,
+                    ClientProjectCreateField::WorktreeRoot => &mut project.worktree_root,
+                };
+                value.pop();
+                project.error = None;
+                outcome.repaint = true;
+            }
+            return;
+        }
+        if key.code == KeyCode::Char('u') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                match project.field {
+                    ClientProjectCreateField::Name => project.name.clear(),
+                    ClientProjectCreateField::RootPath => project.root_path.clear(),
+                    ClientProjectCreateField::WorktreeRoot => project.worktree_root.clear(),
+                }
+                project.error = None;
+                outcome.repaint = true;
+            }
+            return;
+        }
+        if let KeyCode::Char(character) = key.code {
+            if key.modifiers.difference(KeyModifiers::SHIFT).is_empty() {
+                if let Some(text) = key.generated_text.as_deref() {
+                    self.insert_overlay_text(text);
+                } else {
+                    let text = character.to_string();
+                    self.insert_overlay_text(&text);
+                }
+                outcome.repaint = true;
+            }
+        }
+    }
+
+    pub(super) fn submit_project_create(&mut self, outcome: &mut ClientShellInput) {
+        let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() else {
+            return;
+        };
+        if project.submitting {
+            return;
+        }
+        let project_id = project.project_id.clone();
+        let name = project.name.trim().to_owned();
+        let root_path = project.root_path.trim().to_owned();
+        if name.is_empty() {
+            project.error = Some("Project name is required.".to_owned());
+            outcome.repaint = true;
+            return;
+        }
+        if root_path.is_empty() {
+            project.error = Some("Repository or folder path is required.".to_owned());
+            project.field = ClientProjectCreateField::RootPath;
+            outcome.repaint = true;
+            return;
+        }
+        let worktree_root = project.worktree_root.trim().to_owned();
+        let editing = project_id.is_some();
+        let method = if let Some(project_id) = project_id {
+            crate::api::schema::Method::ProjectRename(crate::api::schema::ProjectRenameParams {
+                project_id,
+                name,
+                root_path: Some(root_path),
+                worktree_root: Some(worktree_root),
+            })
+        } else {
+            crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
+                name,
+                root_path,
+                open: true,
+                focus: true,
+                worktree_root: (!worktree_root.is_empty()).then_some(worktree_root),
+            })
+        };
+        project.submitting = true;
+        project.error = None;
+        let sent = self.push_endpoint_method_with_kind(
+            method,
+            if editing {
+                PendingEndpointKind::ProjectUpdate
+            } else {
+                PendingEndpointKind::ProjectCreate
+            },
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                project.submitting = false;
+                project.error = Some("The project endpoint is unavailable.".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
     pub(super) fn route_overlay_key(
         &mut self,
         key: &crate::input::TerminalKey,
@@ -921,6 +1138,62 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::ProjectCreate(_))) {
+            self.route_project_create_key(key, outcome);
+            return;
+        }
+
+        if matches!(self.overlay, Some(ClientShellOverlay::ProjectSettings(_))) {
+            match key.code {
+                KeyCode::Esc => self.overlay = None,
+                KeyCode::Char('e') | KeyCode::Char('E') => self.open_project_edit_overlay(),
+                KeyCode::Enter | KeyCode::Char('r') | KeyCode::Char('R') => {
+                    self.open_project_rename_overlay()
+                }
+                KeyCode::Char('o') | KeyCode::Char('O') => {
+                    let project_id = self.overlay.as_ref().and_then(|overlay| match overlay {
+                        ClientShellOverlay::ProjectSettings(settings) => settings
+                            .project
+                            .as_ref()
+                            .map(|project| project.project_id.clone()),
+                        _ => None,
+                    });
+                    if let Some(project_id) = project_id {
+                        self.overlay = None;
+                        self.push_endpoint_method(
+                            crate::api::schema::Method::ProjectOpen(
+                                crate::api::schema::ProjectOpenParams {
+                                    project_id,
+                                    focus: true,
+                                },
+                            ),
+                            outcome,
+                        );
+                    }
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    let project_id = self.overlay.as_ref().and_then(|overlay| match overlay {
+                        ClientShellOverlay::ProjectSettings(settings) => settings
+                            .project
+                            .as_ref()
+                            .map(|project| project.project_id.clone()),
+                        _ => None,
+                    });
+                    if let Some(project_id) = project_id {
+                        self.overlay = None;
+                        self.push_endpoint_method(
+                            crate::api::schema::Method::ProjectDelete(
+                                crate::api::schema::ProjectTarget { project_id },
+                            ),
+                            outcome,
+                        );
+                    }
+                }
+                _ => {}
+            }
+            outcome.repaint = true;
+            return;
+        }
 
         let Some(ClientShellOverlay::Rename(rename)) = self.overlay.as_mut() else {
             return;
@@ -990,20 +1263,14 @@ impl ClientShellState {
         };
         let trimmed = rename.input.trim();
         let method = match rename.target {
-            ClientRenameTarget::NewWorkspace {
-                source_workspace_id,
-                cwd,
-                suggested_name,
-            } => Some(crate::api::schema::Method::WorkspaceCreate(
-                crate::api::schema::WorkspaceCreateParams {
-                    source_workspace_id,
-                    cwd,
-                    focus: true,
-                    label: (!trimmed.is_empty() && trimmed != suggested_name)
-                        .then(|| trimmed.to_owned()),
-                    env: Default::default(),
-                },
-            )),
+            ClientRenameTarget::Project { project_id } => (!trimmed.is_empty()).then(|| {
+                crate::api::schema::Method::ProjectRename(crate::api::schema::ProjectRenameParams {
+                    project_id,
+                    name: trimmed.to_owned(),
+                    root_path: None,
+                    worktree_root: None,
+                })
+            }),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {
                 crate::api::schema::Method::WorkspaceRename(
                     crate::api::schema::WorkspaceRenameParams {

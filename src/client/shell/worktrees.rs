@@ -545,7 +545,10 @@ impl ClientShellState {
                 | PendingEndpointKind::WordSelection { .. }
                 | PendingEndpointKind::PaneLinkActivate { .. }
                 | PendingEndpointKind::CopyMotion { .. }
-                | PendingEndpointKind::CopySearch { .. },
+                | PendingEndpointKind::CopySearch { .. }
+                | PendingEndpointKind::ProjectList { .. }
+                | PendingEndpointKind::ProjectCreate
+                | PendingEndpointKind::ProjectUpdate,
                 Err(_),
             ) => true,
         }

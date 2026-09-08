@@ -131,11 +131,15 @@ impl App {
                     return;
                 }
             },
-            None => crate::worktree::default_checkout_path(
-                &self.state.worktree_directory,
-                &source.repo_name,
-                &branch,
-            ),
+            None => {
+                let root = self
+                    .state
+                    .projects
+                    .find_by_root(&source.source_repo_root)
+                    .and_then(|project| project.worktree_root.as_deref())
+                    .unwrap_or(&self.state.worktree_directory);
+                crate::worktree::default_checkout_path(root, &source.repo_name, &branch)
+            }
         };
         let checkout_key = crate::worktree::canonical_or_original(&checkout_path);
         if self
