@@ -176,6 +176,7 @@ pub(super) struct ShellHitMap {
     pub(super) project_edit: Rect,
     pub(super) project_rename: Rect,
     pub(super) project_base: Rect,
+    pub(super) project_patterns: Rect,
     pub(super) project_agent: Rect,
     pub(super) project_name: Rect,
     pub(super) project_root: Rect,
@@ -353,6 +354,7 @@ pub(super) enum ClientShellOverlayKind {
     Settings,
     ProjectCreate,
     ProjectSettings,
+    ProjectPatterns,
 }
 
 #[derive(Debug)]
@@ -666,6 +668,20 @@ pub(super) struct ClientProjectSettingsOverlay {
     pub(super) error: Option<String>,
 }
 
+#[derive(Debug)]
+pub(super) struct ClientProjectPatternsOverlay {
+    pub(super) project_id: String,
+    pub(super) name: String,
+    pub(super) root_path: String,
+    pub(super) worktree_root: Option<String>,
+    pub(super) worktree_base: Option<String>,
+    pub(super) patterns: Vec<String>,
+    pub(super) selected: usize,
+    pub(super) input: String,
+    pub(super) editing: bool,
+    pub(super) error: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ClientProjectCreateField {
     Name,
@@ -699,6 +715,7 @@ pub(super) enum ClientShellOverlay {
     ContextMenu(ClientContextMenuOverlay),
     ProjectCreate(ClientProjectCreateOverlay),
     ProjectSettings(ClientProjectSettingsOverlay),
+    ProjectPatterns(ClientProjectPatternsOverlay),
     GlobalMenu(ClientGlobalMenuOverlay),
     Settings(ClientSettingsOverlay),
 }
@@ -718,8 +735,9 @@ impl ClientShellOverlay {
             Self::WorktreeRemove(_) => ClientShellOverlayKind::WorktreeRemove,
             Self::ProjectCreate(_) => ClientShellOverlayKind::ProjectCreate,
             Self::ProjectSettings(_) => ClientShellOverlayKind::ProjectSettings,
-            Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
+            Self::ProjectPatterns(_) => ClientShellOverlayKind::ProjectPatterns,
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
+            Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
         }
     }

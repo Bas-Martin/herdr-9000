@@ -10,6 +10,7 @@ pub(crate) struct OverlayRender {
     pub(crate) project_rename: Rect,
     pub(crate) project_base: Rect,
     pub(crate) project_agent: Rect,
+    pub(crate) project_patterns: Rect,
     pub(crate) project_name: Rect,
     pub(crate) project_root: Rect,
     pub(crate) project_worktree_root: Rect,
@@ -69,6 +70,7 @@ pub(crate) fn render_client_overlay(
         ClientShellOverlay::Rename(v) => render_rename_overlay(b, v, p),
         ClientShellOverlay::ProjectCreate(v) => render_project_create_overlay(b, v, p),
         ClientShellOverlay::ProjectSettings(v) => render_project_settings_overlay(b, v, p),
+        ClientShellOverlay::ProjectPatterns(v) => render_project_patterns_overlay(b, v, p),
         ClientShellOverlay::ConfirmClose(v) => render_confirm_close_overlay(b, v, p),
         ClientShellOverlay::Help(v) => render_help_overlay(b, v, k, p),
         ClientShellOverlay::Navigator(v) => {
@@ -689,7 +691,7 @@ fn render_project_settings_overlay(
     v: &ClientProjectSettingsOverlay,
     p: &Palette,
 ) -> Option<OverlayRender> {
-    let q = popup(b.area, 72, 14)?;
+    let q = popup(b.area, 72, 15)?;
     let i = panel(b, q, p.accent, p.panel_bg)?;
     let title = Style::default()
         .fg(p.text)
@@ -728,7 +730,7 @@ fn render_project_settings_overlay(
             i.x,
             i.y.saturating_add(3),
             i.width,
-            &format!("root: {}", project.root_path),
+            &format!("root [local]: {}", project.root_path),
             Style::default().fg(p.text).bg(p.panel_bg),
         );
         put_text(
@@ -737,7 +739,7 @@ fn render_project_settings_overlay(
             i.y.saturating_add(4),
             i.width,
             &format!(
-                "worktrees: {}",
+                "worktrees [local]: {}",
                 project.worktree_root.as_deref().unwrap_or("global default")
             ),
             Style::default().fg(p.text).bg(p.panel_bg),
@@ -748,7 +750,7 @@ fn render_project_settings_overlay(
             i.y.saturating_add(5),
             i.width,
             &format!(
-                "base: {}",
+                "base [project]: {}",
                 project
                     .worktree_base
                     .as_deref()
@@ -762,7 +764,7 @@ fn render_project_settings_overlay(
             i.y.saturating_add(6),
             i.width,
             &format!(
-                "agent: {}",
+                "agent [project]: {}",
                 project.default_agent.as_deref().unwrap_or("not configured")
             ),
             Style::default().fg(p.text).bg(p.panel_bg),
@@ -772,7 +774,18 @@ fn render_project_settings_overlay(
             i.x,
             i.y.saturating_add(7),
             i.width,
-            "e edit   r rename   b base   a agent   o open   d delete",
+            &format!(
+                "preserve [project]: {} pattern(s)",
+                project.preserve_patterns.len()
+            ),
+            Style::default().fg(p.text).bg(p.panel_bg),
+        );
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(8),
+            i.width,
+            "e edit   r rename   b base   a agent   p files   o open   d delete",
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     } else {
@@ -785,8 +798,8 @@ fn render_project_settings_overlay(
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     }
-    let rs = row(i, &[10, 12, 10, 10, 12], 2, i.height.saturating_sub(2));
-    let [edit, rename, base, agent, cancel] = rs.as_slice() else {
+    let rs = row(i, &[10, 12, 10, 10, 10, 12], 1, i.height.saturating_sub(2));
+    let [edit, rename, base, agent, patterns, cancel] = rs.as_slice() else {
         return None;
     };
     let button_style = Style::default().fg(p.text).bg(p.surface0);
@@ -794,12 +807,14 @@ fn render_project_settings_overlay(
     button(b, *rename, " r rename ", button_style);
     button(b, *base, " b base ", button_style);
     button(b, *agent, " a agent ", button_style);
+    button(b, *patterns, " p files ", button_style);
     button(b, *cancel, " esc close ", button_style);
-    let (primary, project_edit, project_rename, project_base, project_agent) =
+    let (primary, project_edit, project_rename, project_base, project_agent, project_patterns) =
         if v.project.is_some() {
-            (*rename, *edit, *rename, *base, *agent)
+            (*rename, *edit, *rename, *base, *agent, *patterns)
         } else {
             (
+                Rect::default(),
                 Rect::default(),
                 Rect::default(),
                 Rect::default(),
@@ -813,13 +828,122 @@ fn render_project_settings_overlay(
         project_rename,
         project_base,
         project_agent,
+        project_patterns,
         cancel: *cancel,
+        ..OverlayRender::default()
+    })
+}
+
+fn render_project_patterns_overlay(
+    b: &mut Buffer,
+    v: &ClientProjectPatternsOverlay,
+    p: &Palette,
+) -> Option<OverlayRender> {
+    let q = popup(b.area, 78, 18)?;
+    let i = panel(b, q, p.accent, p.panel_bg)?;
+    put_text(
+        b,
+        i.x,
+        i.y,
+        i.width,
+        "preserve patterns",
+        Style::default()
+            .fg(p.text)
+            .bg(p.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    put_text(
+        b,
+        i.x,
+        i.y.saturating_add(1),
+        i.width,
+        "Repository-relative globs; only ignored or untracked files are copied.",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    let list_height = usize::from(i.height.saturating_sub(8));
+    if v.patterns.is_empty() {
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(3),
+            i.width,
+            "(none)",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    } else {
+        let first = v
+            .selected
+            .saturating_sub(list_height.saturating_sub(1))
+            .min(v.patterns.len().saturating_sub(1));
+        for (row_index, pattern) in v.patterns.iter().enumerate().skip(first).take(list_height) {
+            let marker = if row_index == v.selected { ">" } else { " " };
+            put_text(
+                b,
+                i.x,
+                i.y.saturating_add(3 + u16::try_from(row_index - first).unwrap_or(u16::MAX)),
+                i.width,
+                &format!("{marker} {pattern}"),
+                Style::default().fg(p.text).bg(p.panel_bg),
+            );
+        }
+    }
+    if v.editing {
+        let input = Rect::new(i.x, i.bottom().saturating_sub(6), i.width, 1);
+        b.set_style(input, Style::default().fg(p.text).bg(p.surface0));
+        put_text(
+            b,
+            input.x,
+            input.y,
+            input.width.saturating_sub(1),
+            &format!(" {}", v.input),
+            Style::default().fg(p.text).bg(p.surface0),
+        );
+    }
+    if let Some(error) = v.error.as_deref() {
+        put_text(
+            b,
+            i.x,
+            i.bottom().saturating_sub(5),
+            i.width,
+            error,
+            Style::default().fg(p.red).bg(p.panel_bg),
+        );
+    } else {
+        put_text(
+            b,
+            i.x,
+            i.bottom().saturating_sub(5),
+            i.width,
+            "j/k select   a add   e edit   d delete   x clear",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
+    }
+    let rs = row(i, &[8, 8, 10, 12], 2, i.height.saturating_sub(2));
+    let [add, edit, save, cancel] = rs.as_slice() else {
+        return None;
+    };
+    let button_style = Style::default().fg(p.text).bg(p.surface0);
+    button(b, *add, " a add ", button_style);
+    button(b, *edit, " e edit ", button_style);
+    button(b, *save, " s save ", button_style);
+    button(b, *cancel, " esc close ", button_style);
+    let input = Rect::new(i.x, i.bottom().saturating_sub(6), i.width, 1);
+    Some(OverlayRender {
+        primary: *save,
+        cancel: *cancel,
+        cursor: v.editing.then_some(crate::protocol::CursorState {
+            x: (input.x + 1 + display_width(&v.input)).min(input.right().saturating_sub(1)),
+            y: input.y,
+            visible: true,
+            shape: 0,
+        }),
         ..OverlayRender::default()
     })
 }
 
 fn render_project_create_overlay(
     b: &mut Buffer,
+
     v: &ClientProjectCreateOverlay,
     p: &Palette,
 ) -> Option<OverlayRender> {

@@ -1647,12 +1647,18 @@ impl ClientShellState {
             } else if super::contains(self.hits.project_agent, point) {
                 self.open_project_default_agent_overlay();
                 outcome.repaint = true;
+            } else if super::contains(self.hits.project_patterns, point) {
+                self.open_project_patterns_overlay();
+                outcome.repaint = true;
             } else if super::contains(self.hits.overlay_primary, point) {
                 match self.overlay.as_ref() {
                     Some(ClientShellOverlay::Rename(_)) => self.save_rename_overlay(outcome),
                     Some(ClientShellOverlay::ProjectSettings(_)) => {
                         self.open_project_rename_overlay();
                         outcome.repaint = true;
+                    }
+                    Some(ClientShellOverlay::ProjectPatterns(_)) => {
+                        self.submit_project_patterns(outcome);
                     }
                     Some(ClientShellOverlay::ConfirmClose(_)) => {
                         let Some(ClientShellOverlay::ConfirmClose(confirm)) = self.overlay.take()
