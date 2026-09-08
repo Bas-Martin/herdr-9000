@@ -68,6 +68,10 @@ pub struct TaskInfo {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     pub status: TaskStatus,
     pub created_at: u64,
     pub updated_at: u64,

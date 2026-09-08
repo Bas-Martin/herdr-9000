@@ -42,6 +42,10 @@ pub(crate) struct Task {
     pub(crate) provider: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent_command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<String>,
     pub(crate) status: TaskStatus,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
@@ -112,6 +116,8 @@ impl Task {
             provider,
             model,
             prompt,
+            agent_command: None,
+            error: None,
             status: TaskStatus::Open,
             created_at: now,
             updated_at: now,

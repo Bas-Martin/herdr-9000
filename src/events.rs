@@ -170,6 +170,13 @@ pub enum AppEvent {
     },
     /// Background `git worktree add` completed.
     WorktreeAddFinished(Box<WorktreeAddResult>),
+    /// Retry submitting the initial prompt for an automatically started task agent.
+    TaskAgentPrompt { task_id: String, attempt: u8 },
+    /// Completion of an automatically submitted task prompt.
+    TaskAgentPromptFinished {
+        task_id: String,
+        result: Result<(), String>,
+    },
     /// Background `git worktree remove` completed.
     WorktreeRemoveFinished(Box<WorktreeRemoveResult>),
 }

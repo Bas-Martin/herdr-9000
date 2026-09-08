@@ -155,6 +155,15 @@ impl App {
             }
             return Vec::new();
         }
+        if let AppEvent::TaskAgentPrompt { task_id, attempt } = ev {
+            self.handle_task_agent_prompt(task_id, attempt);
+            return Vec::new();
+        }
+
+        if let AppEvent::TaskAgentPromptFinished { task_id, result } = ev {
+            self.handle_task_agent_prompt_finished(task_id, result);
+            return Vec::new();
+        }
 
         if let AppEvent::WorktreeAddFinished(result) = ev {
             self.handle_api_worktree_add_finished(*result);

@@ -563,6 +563,7 @@ impl App {
                 .projects
                 .find(&project_id)
                 .and_then(|project| project.default_agent.clone());
+            let prompt = Some(task_name.clone());
             let task = crate::task::Task::new(
                 project_id,
                 task_name,
@@ -571,7 +572,7 @@ impl App {
                 Some(result.path.clone()),
                 provider,
                 None,
-                None,
+                prompt,
                 Some(self.public_workspace_id(ws_idx)),
                 Some(tab.tab_id.clone()),
                 Some(root_pane.pane_id.clone()),
@@ -590,7 +591,17 @@ impl App {
                 );
                 return;
             }
-            Some(self.task_info(&task))
+            let task_id = task.id.clone();
+            if let Err(err) = self.start_task_agent(&task_id) {
+                tracing::warn!(task_id, error = %err, "automatic task agent launch failed");
+            }
+            Some(
+                self.state
+                    .tasks
+                    .find(&task_id)
+                    .map(|task| self.task_info(task))
+                    .expect("saved task should remain available"),
+            )
         } else {
             None
         };

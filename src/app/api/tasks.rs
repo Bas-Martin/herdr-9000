@@ -1,8 +1,11 @@
+use std::time::Duration;
+
 use crate::api::schema::{
-    ResponseResult, TaskCreateParams, TaskInfo, TaskListParams, TaskOpenParams, TaskRenameParams,
-    TaskRuntimeInfo, TaskTarget,
+    AgentPromptParams, AgentStartParams, ResponseResult, TaskCreateParams, TaskInfo,
+    TaskListParams, TaskOpenParams, TaskRenameParams, TaskRuntimeInfo, TaskTarget,
 };
 use crate::app::App;
+use crate::events::AppEvent;
 use crate::task::{Task, TaskLocationMode, TaskStatus};
 
 use super::responses::{encode_error, encode_success};
@@ -96,6 +99,153 @@ impl App {
                 task: self.task_info(&task),
             },
         )
+    }
+    pub(super) fn start_task_agent(&mut self, task_id: &str) -> Result<(), String> {
+        let Some(task) = self.state.tasks.find(task_id).cloned() else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        let Some(provider) = task.provider.clone() else {
+            return Ok(());
+        };
+        let Some(pane_id) = task.pane_id.clone() else {
+            let message = "task has no runtime pane for automatic agent launch".to_owned();
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let provider = match crate::project::normalize_agent_provider(&provider) {
+            Ok(provider) => provider,
+            Err(message) => {
+                self.record_task_error(task_id, message.clone());
+                return Err(message);
+            }
+        };
+        let command = crate::detect::interactive_agent_executable(
+            crate::detect::parse_agent_label(&provider)
+                .expect("normalized task provider must have a known agent"),
+        )
+        .to_owned();
+        let now = crate::task::current_unix_ms();
+        let previous = self.state.tasks.clone();
+        let Some(stored) = self.state.tasks.find_mut(task_id) else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        stored.provider = Some(provider.clone());
+        stored.agent_command = Some(command);
+        stored.error = None;
+        stored.updated_at = now;
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return Err(format!("task launch metadata could not be saved: {err}"));
+        }
+        let start = self.start_agent(AgentStartParams {
+            name: task.id.clone(),
+            kind: provider,
+            pane_id,
+            args: Vec::new(),
+            timeout_ms: None,
+        });
+        if let Err(err) = start {
+            let message = self.agent_start_error_body(err).message;
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        }
+        self.schedule_task_agent_prompt(task.id, 0);
+        Ok(())
+    }
+
+    fn schedule_task_agent_prompt(&self, task_id: String, attempt: u8) {
+        let event_tx = self.event_tx.clone();
+        std::thread::spawn(move || {
+            let delay = if attempt == 0 {
+                Duration::from_millis(100)
+            } else {
+                Duration::from_millis(250)
+            };
+            std::thread::sleep(delay);
+            let _ = event_tx.blocking_send(AppEvent::TaskAgentPrompt { task_id, attempt });
+        });
+    }
+
+    pub(super) fn handle_task_agent_prompt(&mut self, task_id: String, attempt: u8) {
+        const MAX_PROMPT_ATTEMPTS: u8 = 24;
+        let Some(task) = self.state.tasks.find(&task_id).cloned() else {
+            return;
+        };
+        let Some(target) = task.pane_id.clone() else {
+            self.record_task_error(
+                &task_id,
+                "task has no runtime pane for the initial agent prompt".to_owned(),
+            );
+            return;
+        };
+        let prompt = task
+            .prompt
+            .clone()
+            .filter(|prompt| !prompt.is_empty())
+            .unwrap_or(task.name);
+        let request_id = format!("task-agent-prompt:{task_id}");
+        match self.queue_agent_prompt(
+            request_id,
+            AgentPromptParams {
+                target,
+                text: prompt,
+                wait: None,
+            },
+        ) {
+            Ok((_id, _agent, completion)) => {
+                let event_tx = self.event_tx.clone();
+                std::thread::spawn(move || {
+                    let result = match completion.recv() {
+                        Ok(Ok(())) => Ok(()),
+                        Ok(Err(err)) => Err(err.to_string()),
+                        Err(_) => {
+                            Err("pty actor closed before initial prompt completed".to_owned())
+                        }
+                    };
+                    let _ = event_tx
+                        .blocking_send(AppEvent::TaskAgentPromptFinished { task_id, result });
+                });
+            }
+            Err(response) => {
+                let error = serde_json::from_str::<crate::api::schema::ErrorResponse>(&response)
+                    .map(|response| response.error)
+                    .ok();
+                if error
+                    .as_ref()
+                    .is_some_and(|error| error.code == "agent_not_ready")
+                    && attempt < MAX_PROMPT_ATTEMPTS
+                {
+                    self.schedule_task_agent_prompt(task_id, attempt + 1);
+                } else {
+                    let message = error.map_or_else(
+                        || "initial agent prompt could not be submitted".to_owned(),
+                        |error| error.message,
+                    );
+                    self.record_task_error(&task_id, message);
+                }
+            }
+        }
+    }
+
+    pub(super) fn handle_task_agent_prompt_finished(
+        &mut self,
+        task_id: String,
+        result: Result<(), String>,
+    ) {
+        if let Err(message) = result {
+            self.record_task_error(&task_id, format!("initial agent prompt failed: {message}"));
+        }
+    }
+
+    fn record_task_error(&mut self, task_id: &str, message: String) {
+        let Some(task) = self.state.tasks.find_mut(task_id) else {
+            return;
+        };
+        task.error = Some(message);
+        task.updated_at = crate::task::current_unix_ms();
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            tracing::error!(task_id, error = %err, "failed to persist task error");
+        }
     }
 
     pub(super) fn handle_task_list(&mut self, id: String, params: TaskListParams) -> String {
@@ -255,6 +405,8 @@ impl App {
             provider: task.provider.clone(),
             model: task.model.clone(),
             prompt: task.prompt.clone(),
+            agent_command: task.agent_command.clone(),
+            error: task.error.clone(),
             status: task.status,
             created_at: task.created_at,
             updated_at: task.updated_at,

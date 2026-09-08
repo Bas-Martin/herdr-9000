@@ -11375,6 +11375,12 @@
         },
         "TaskInfo": {
           "properties": {
+            "agent_command": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "branch": {
               "type": [
                 "string",
@@ -11393,6 +11399,12 @@
               "format": "uint64",
               "minimum": 0,
               "type": "integer"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "location": {
               "$ref": "#/schemas/success_response/$defs/TaskLocationMode"
