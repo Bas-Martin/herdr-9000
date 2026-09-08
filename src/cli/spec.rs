@@ -41,6 +41,7 @@ pub(super) fn command() -> Command {
         .subcommand(tab_command())
         .subcommand(notification_command())
         .subcommand(project_command())
+        .subcommand(task_command())
         .subcommand(agent_command())
         .subcommand(pane_command())
         .subcommand(terminal_command())
@@ -218,6 +219,46 @@ fn project_command() -> Command {
             "project_id",
             "Delete a project registration",
         ))
+}
+
+fn task_command() -> Command {
+    Command::new("task")
+        .about("Manage durable agent tasks")
+        .subcommand(
+            Command::new("list")
+                .about("List tasks")
+                .arg(option("project", "PROJECT_ID"))
+                .arg(flag("include-closed")),
+        )
+        .subcommand(
+            Command::new("create")
+                .about("Create a task")
+                .arg(option("project", "PROJECT_ID").required(true))
+                .arg(option("name", "NAME").required(true))
+                .arg(option("location", "repository|worktree"))
+                .arg(option("branch", "BRANCH"))
+                .arg(path_option("worktree-path", "PATH"))
+                .arg(option("provider", "PROVIDER"))
+                .arg(option("model", "MODEL"))
+                .arg(option("prompt", "PROMPT"))
+                .arg(option("workspace-id", "WORKSPACE_ID"))
+                .arg(option("tab-id", "TAB_ID"))
+                .arg(option("pane-id", "PANE_ID")),
+        )
+        .subcommand(
+            Command::new("open")
+                .about("Open a task")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(flag("focus"))
+                .arg(flag("no-focus")),
+        )
+        .subcommand(
+            Command::new("rename")
+                .about("Rename a task")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(required("name", "NAME").num_args(1..)),
+        )
+        .subcommand(id_command("close", "task_id", "Close a task"))
 }
 
 fn workspace_command() -> Command {

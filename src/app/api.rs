@@ -12,6 +12,7 @@ mod projects;
 pub(super) mod responses;
 mod session;
 mod tabs;
+mod tasks;
 mod workspaces;
 mod worktrees;
 
@@ -1029,6 +1030,11 @@ impl App {
             Method::ProjectDelete(target) => {
                 return self.handle_project_delete(request.id, target);
             }
+            Method::TaskCreate(params) => return self.handle_task_create(request.id, params),
+            Method::TaskList(params) => return self.handle_task_list(request.id, params),
+            Method::TaskOpen(params) => return self.handle_task_open(request.id, params),
+            Method::TaskRename(params) => return self.handle_task_rename(request.id, params),
+            Method::TaskClose(target) => return self.handle_task_close(request.id, target),
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {
                 let _ = params;

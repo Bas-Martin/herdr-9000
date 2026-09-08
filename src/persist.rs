@@ -9,6 +9,7 @@ pub mod plugin_registry;
 mod projects;
 mod restore;
 mod snapshot;
+mod tasks;
 
 pub use self::io::{clear, clear_history, load, load_history, save};
 
@@ -20,3 +21,4 @@ pub use self::snapshot::{
     capture, capture_history, DirectionSnapshot, LayoutSnapshot, SessionHistorySnapshot,
     SessionSnapshot, TabSnapshot, WorkspaceSnapshot,
 };
+pub(crate) use self::tasks::{load as load_tasks, save as save_tasks};
