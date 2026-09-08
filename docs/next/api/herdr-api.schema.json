@@ -4518,6 +4518,136 @@
           ],
           "type": "object"
         },
+        "TaskCreateParams": {
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "location": {
+              "$ref": "#/schemas/request/$defs/TaskLocationMode",
+              "default": "repository"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tab_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "worktree_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "project_id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "TaskListParams": {
+          "properties": {
+            "include_closed": {
+              "default": false,
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "TaskLocationMode": {
+          "enum": [
+            "repository",
+            "worktree"
+          ],
+          "type": "string"
+        },
+        "TaskOpenParams": {
+          "properties": {
+            "focus": {
+              "default": true,
+              "type": "boolean"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "type": "object"
+        },
+        "TaskRenameParams": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "TaskTarget": {
+          "properties": {
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "type": "object"
+        },
         "ToastHerdrPosition": {
           "enum": [
             "top-left",
@@ -5314,6 +5444,86 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/ProjectTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.open",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskOpenParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.rename",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskRenameParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.close",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskTarget"
             }
           },
           "required": [
@@ -9628,6 +9838,109 @@
             },
             {
               "properties": {
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "task_info",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "task_created",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "tasks": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "task_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "tasks"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "runtime": {
+                  "$ref": "#/schemas/success_response/$defs/TaskRuntimeInfo"
+                },
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "task_opened",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task",
+                "runtime"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "task_renamed",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "task_closed",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "source": {
                   "$ref": "#/schemas/success_response/$defs/WorktreeSourceInfo"
                 },
@@ -11001,6 +11314,160 @@
             "agent_status"
           ],
           "type": "object"
+        },
+        "TaskInfo": {
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "closed_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "created_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "location": {
+              "$ref": "#/schemas/success_response/$defs/TaskLocationMode"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runtime_available": {
+              "type": "boolean"
+            },
+            "runtime_message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/TaskStatus"
+            },
+            "tab_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "updated_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "worktree_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "task_id",
+            "project_id",
+            "name",
+            "location",
+            "status",
+            "created_at",
+            "updated_at",
+            "runtime_available"
+          ],
+          "type": "object"
+        },
+        "TaskLocationMode": {
+          "enum": [
+            "repository",
+            "worktree"
+          ],
+          "type": "string"
+        },
+        "TaskRuntimeInfo": {
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tab_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "available"
+          ],
+          "type": "object"
+        },
+        "TaskStatus": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "type": "string"
         },
         "WorkspaceInfo": {
           "properties": {

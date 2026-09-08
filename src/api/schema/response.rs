@@ -19,6 +19,7 @@ use super::projects::ProjectInfo;
 use super::server::ServerCapabilities;
 use super::session::SessionSnapshot;
 use super::tabs::TabInfo;
+use super::tasks::{TaskInfo, TaskRuntimeInfo};
 use super::workspaces::WorkspaceInfo;
 use super::worktrees::{WorktreeInfo, WorktreeSourceInfo};
 
@@ -79,6 +80,25 @@ pub enum ResponseResult {
     },
     ProjectDeleted {
         project_id: String,
+    },
+    TaskInfo {
+        task: TaskInfo,
+    },
+    TaskCreated {
+        task: TaskInfo,
+    },
+    TaskList {
+        tasks: Vec<TaskInfo>,
+    },
+    TaskOpened {
+        task: TaskInfo,
+        runtime: TaskRuntimeInfo,
+    },
+    TaskRenamed {
+        task: TaskInfo,
+    },
+    TaskClosed {
+        task: TaskInfo,
     },
     WorktreeList {
         source: WorktreeSourceInfo,

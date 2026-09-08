@@ -12,6 +12,7 @@ pub mod response;
 pub mod server;
 pub mod session;
 pub mod tabs;
+pub mod tasks;
 pub mod workspaces;
 pub mod worktrees;
 
@@ -27,6 +28,7 @@ pub use response::*;
 pub use server::*;
 pub use session::*;
 pub use tabs::*;
+pub use tasks::*;
 pub use workspaces::*;
 pub use worktrees::*;
 
@@ -107,6 +109,16 @@ pub enum Method {
     ProjectUpdate(ProjectUpdateParams),
     #[serde(rename = "project.delete")]
     ProjectDelete(ProjectTarget),
+    #[serde(rename = "task.create")]
+    TaskCreate(TaskCreateParams),
+    #[serde(rename = "task.list")]
+    TaskList(TaskListParams),
+    #[serde(rename = "task.open")]
+    TaskOpen(TaskOpenParams),
+    #[serde(rename = "task.rename")]
+    TaskRename(TaskRenameParams),
+    #[serde(rename = "task.close")]
+    TaskClose(TaskTarget),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

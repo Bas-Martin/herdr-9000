@@ -2,7 +2,8 @@ use crate::api::schema::{
     EmptyParams, Method, PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams,
     PaneRenameParams, PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget,
     PaneZoomParams, ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget,
-    Request, TabCreateParams, TabListParams, TabRenameParams, TabTarget, WorkspaceCloseParams,
+    Request, TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskCreateParams,
+    TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget, WorkspaceCloseParams,
     WorkspaceCreateParams, WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams,
     WorktreeListParams, WorktreeOpenParams, WorktreeRemoveParams,
 };
@@ -72,6 +73,26 @@ pub(super) fn project_rename(params: ProjectRenameParams) -> std::io::Result<i32
 
 pub(super) fn project_delete(target: ProjectTarget) -> std::io::Result<i32> {
     print_method_response("cli:project:delete", Method::ProjectDelete(target))
+}
+
+pub(super) fn task_list(params: TaskListParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:list", Method::TaskList(params))
+}
+
+pub(super) fn task_create(params: TaskCreateParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:create", Method::TaskCreate(params))
+}
+
+pub(super) fn task_open(params: TaskOpenParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:open", Method::TaskOpen(params))
+}
+
+pub(super) fn task_rename(params: TaskRenameParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:rename", Method::TaskRename(params))
+}
+
+pub(super) fn task_close(target: TaskTarget) -> std::io::Result<i32> {
+    print_method_response("cli:task:close", Method::TaskClose(target))
 }
 
 pub(super) fn tab_list(params: TabListParams) -> std::io::Result<i32> {
