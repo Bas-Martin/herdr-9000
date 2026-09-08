@@ -160,6 +160,7 @@ fn worktree_create(args: &[String]) -> std::io::Result<i32> {
     }
 
     super::runtime::worktree_create(WorktreeCreateParams {
+        project_id: None,
         workspace_id,
         cwd,
         branch,

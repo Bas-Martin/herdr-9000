@@ -550,6 +550,11 @@ impl App {
             source_workspace_id: source
                 .workspace_idx
                 .map(|idx| self.public_workspace_id(idx)),
+            project_id: self
+                .state
+                .projects
+                .find_by_root(&source.source_repo_root)
+                .map(|project| project.id.clone()),
             worktree_root: self
                 .state
                 .projects
@@ -2160,6 +2165,7 @@ mod tests {
             Request {
                 id: "req".into(),
                 method: crate::api::schema::Method::WorktreeCreate(WorktreeCreateParams {
+                    project_id: None,
                     workspace_id: None,
                     cwd: Some(repo.display().to_string()),
                     branch: Some("worktree/create-remove-in-flight".into()),

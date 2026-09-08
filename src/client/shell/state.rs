@@ -492,6 +492,7 @@ pub(super) struct ClientSettingsOverlay {
 #[derive(Debug)]
 pub(super) struct ClientWorktreeCreateOverlay {
     pub(super) source_workspace_id: String,
+    pub(super) project_id: Option<String>,
     pub(super) repo_name: String,
     pub(super) branch: String,
     pub(super) worktree_directory: String,

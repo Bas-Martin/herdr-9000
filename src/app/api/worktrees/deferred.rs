@@ -122,27 +122,44 @@ impl App {
                 return;
             }
         };
-        if self
-            .state
-            .projects
-            .find_by_root(&source.source_repo_root)
-            .is_none()
-        {
-            Self::send_api_response(
-                respond_to,
-                encode_error(
-                    id,
-                    "project_not_registered",
-                    "register this repository as a project before creating a worktree",
-                ),
-            );
-            return;
-        }
+        let project_settings = match params.project_id.as_deref() {
+            None => None,
+            Some(project_id) => {
+                let Some(project) = self.state.projects.find(project_id) else {
+                    Self::send_api_response(
+                        respond_to,
+                        encode_error(
+                            id,
+                            "project_not_found",
+                            format!("project {project_id} not found"),
+                        ),
+                    );
+                    return;
+                };
+                if !crate::project::same_path(&project.root_path, &source.source_repo_root) {
+                    Self::send_api_response(
+                        respond_to,
+                        encode_error(
+                            id,
+                            "project_path_mismatch",
+                            "project does not match the worktree source repository",
+                        ),
+                    );
+                    return;
+                }
+                Some((project.worktree_root.clone(), project.worktree_base.clone()))
+            }
+        };
         let base = params.base.unwrap_or_else(|| {
-            self.state
-                .projects
-                .find_by_root(&source.source_repo_root)
-                .and_then(|project| project.worktree_base.clone())
+            project_settings
+                .as_ref()
+                .and_then(|(_, base)| base.clone())
+                .or_else(|| {
+                    self.state
+                        .projects
+                        .find_by_root(&source.source_repo_root)
+                        .and_then(|project| project.worktree_base.clone())
+                })
                 .unwrap_or_else(|| crate::project::DEFAULT_WORKTREE_BASE.to_owned())
         });
         let checkout_path = match params.path {
@@ -154,11 +171,15 @@ impl App {
                 }
             },
             None => {
-                let root = self
-                    .state
-                    .projects
-                    .find_by_root(&source.source_repo_root)
-                    .and_then(|project| project.worktree_root.as_deref())
+                let root = project_settings
+                    .as_ref()
+                    .and_then(|(root, _)| root.as_deref())
+                    .or_else(|| {
+                        self.state
+                            .projects
+                            .find_by_root(&source.source_repo_root)
+                            .and_then(|project| project.worktree_root.as_deref())
+                    })
                     .unwrap_or(&self.state.worktree_directory);
                 crate::worktree::default_checkout_path(root, &source.repo_name, &branch)
             }

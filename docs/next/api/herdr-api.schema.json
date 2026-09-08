@@ -4759,6 +4759,12 @@
                 "null"
               ]
             },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "trust_repository": {
               "type": "boolean"
             },
@@ -11157,6 +11163,12 @@
         },
         "WorktreeSourceInfo": {
           "properties": {
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "repo_key": {
               "type": "string"
             },
