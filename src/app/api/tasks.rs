@@ -228,7 +228,7 @@ impl App {
         })
     }
 
-    fn task_info(&self, task: &Task) -> TaskInfo {
+    pub(crate) fn task_info(&self, task: &Task) -> TaskInfo {
         let runtime = self.task_runtime_info(task);
         TaskInfo {
             task_id: task.id.clone(),

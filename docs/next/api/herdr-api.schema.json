@@ -4895,6 +4895,12 @@
                 "null"
               ]
             },
+            "task_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "trust_repository": {
               "type": "boolean"
             },
@@ -9993,6 +9999,16 @@
                 },
                 "tab": {
                   "$ref": "#/schemas/success_response/$defs/TabInfo"
+                },
+                "task": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "type": {
                   "const": "worktree_created",

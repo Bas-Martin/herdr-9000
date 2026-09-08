@@ -28,7 +28,19 @@ impl ClientShellState {
                     create.branch.clear();
                     create.replace_on_type = false;
                 }
-                create.branch.push_str(text);
+                match create.field {
+                    ClientWorktreeCreateField::TaskName => {
+                        create.task_name.push_str(text);
+                        if !create.branch_overridden {
+                            create.branch =
+                                crate::worktree::branch_name_for_task(&create.task_name);
+                        }
+                    }
+                    ClientWorktreeCreateField::Branch => {
+                        create.branch.push_str(text);
+                        create.branch_overridden = true;
+                    }
+                }
                 self.sync_worktree_create_path();
                 true
             }
@@ -59,21 +71,78 @@ impl ClientShellState {
                         ClientWorktreeCreateOverlay { creating: true, .. }
                     ))
                 );
+                let advance_field = |state: &mut Self| {
+                    if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut()
+                    {
+                        create.field = match create.field {
+                            ClientWorktreeCreateField::TaskName => {
+                                ClientWorktreeCreateField::Branch
+                            }
+                            ClientWorktreeCreateField::Branch => {
+                                ClientWorktreeCreateField::TaskName
+                            }
+                        };
+                    }
+                };
                 match code {
                     KeyCode::Esc if !creating => {
                         self.overlay = None;
                         outcome.repaint = true;
                     }
-                    KeyCode::Enter => self.submit_worktree_create(outcome),
+                    KeyCode::Tab | KeyCode::BackTab if !creating => {
+                        advance_field(self);
+                        outcome.repaint = true;
+                    }
+                    KeyCode::Enter
+                        if !creating
+                            && modifiers.contains(crossterm::event::KeyModifiers::SHIFT) =>
+                    {
+                        advance_field(self);
+                        outcome.repaint = true;
+                    }
+                    KeyCode::Enter if !creating => {
+                        let field = match self.overlay.as_ref() {
+                            Some(ClientShellOverlay::WorktreeCreate(create)) => create.field,
+                            _ => return true,
+                        };
+                        if field == ClientWorktreeCreateField::TaskName {
+                            if let Some(ClientShellOverlay::WorktreeCreate(create)) =
+                                self.overlay.as_mut()
+                            {
+                                if create.task_name.trim().is_empty() {
+                                    create.error = Some("task name is required".to_owned());
+                                } else {
+                                    if !create.branch_overridden {
+                                        create.branch = crate::worktree::branch_name_for_task(
+                                            &create.task_name,
+                                        );
+                                    }
+                                    create.field = ClientWorktreeCreateField::Branch;
+                                    create.error = None;
+                                }
+                            }
+                            outcome.repaint = true;
+                        } else {
+                            self.submit_worktree_create(outcome);
+                        }
+                    }
                     KeyCode::Backspace if !creating => {
                         if let Some(ClientShellOverlay::WorktreeCreate(create)) =
                             self.overlay.as_mut()
                         {
-                            if create.replace_on_type {
-                                create.branch.clear();
-                                create.replace_on_type = false;
-                            } else {
-                                create.branch.pop();
+                            match create.field {
+                                ClientWorktreeCreateField::TaskName => {
+                                    create.task_name.pop();
+                                    if !create.branch_overridden {
+                                        create.branch = crate::worktree::branch_name_for_task(
+                                            &create.task_name,
+                                        );
+                                    }
+                                }
+                                ClientWorktreeCreateField::Branch => {
+                                    create.branch.pop();
+                                    create.branch_overridden = true;
+                                }
                             }
                         }
                         self.sync_worktree_create_path();
@@ -261,19 +330,28 @@ impl ClientShellState {
     }
 
     pub(super) fn submit_worktree_create(&mut self, outcome: &mut ClientShellInput) {
-        let (workspace_id, project_id, branch) = {
+        let (workspace_id, project_id, task_name, branch) = {
             let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
                 return;
             };
             if create.creating {
                 return;
             }
+            let task_name = create.task_name.trim().to_owned();
+            if task_name.is_empty() {
+                create.field = ClientWorktreeCreateField::TaskName;
+                create.error = Some("task name is required".to_owned());
+                outcome.repaint = true;
+                return;
+            }
             let branch = create.branch.trim().to_owned();
             if branch.is_empty() || branch == "feat/" {
+                create.field = ClientWorktreeCreateField::Branch;
                 create.error = Some("branch name is required after feat/".to_owned());
                 outcome.repaint = true;
                 return;
             }
+            create.task_name = task_name.clone();
             create.branch = branch.clone();
             create.replace_on_type = false;
             create.checkout_path =
@@ -283,12 +361,14 @@ impl ClientShellState {
             (
                 create.source_workspace_id.clone(),
                 create.project_id.clone(),
+                task_name,
                 branch,
             )
         };
         if !self.push_endpoint_method_with_kind(
             crate::api::schema::Method::WorktreeCreate(crate::api::schema::WorktreeCreateParams {
                 project_id,
+                task_name: Some(task_name),
                 workspace_id: Some(workspace_id),
                 cwd: None,
                 branch: Some(branch),
@@ -424,8 +504,11 @@ impl ClientShellState {
                         source_workspace_id: workspace_id,
                         project_id: Some(project_id),
                         repo_name: source.repo_name,
+                        task_name: String::new(),
                         branch,
                         worktree_directory,
+                        field: ClientWorktreeCreateField::TaskName,
+                        branch_overridden: false,
                         checkout_path,
                         replace_on_type: false,
                         error: None,

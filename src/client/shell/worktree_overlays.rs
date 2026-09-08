@@ -5,7 +5,7 @@ pub(super) fn render_worktree_create_overlay(
     create: &ClientWorktreeCreateOverlay,
     p: &Palette,
 ) -> Option<OverlayRender> {
-    let popup = popup(b.area, 68, 12)?;
+    let popup = popup(b.area, 72, 16)?;
     let inner = panel(b, popup, p.accent, p.panel_bg)?;
     put_text(
         b,
@@ -23,23 +23,51 @@ pub(super) fn render_worktree_create_overlay(
         inner.x,
         inner.y + 2,
         inner.width,
-        " branch",
+        " task name",
         Style::default().fg(p.overlay0).bg(p.panel_bg),
     );
-    let input = Rect::new(inner.x, inner.y + 3, inner.width, 1);
-    b.set_style(input, Style::default().fg(p.text).bg(p.surface0));
+    let task_name_input = Rect::new(inner.x, inner.y + 3, inner.width, 1);
     put_text(
         b,
-        input.x,
-        input.y,
-        input.width,
-        &format!(" {}", create.branch),
-        Style::default().fg(p.text).bg(p.surface0),
+        task_name_input.x,
+        task_name_input.y,
+        task_name_input.width,
+        &format!(" {}", create.task_name),
+        Style::default()
+            .fg(p.text)
+            .bg(if create.field == ClientWorktreeCreateField::TaskName {
+                p.surface1
+            } else {
+                p.surface0
+            }),
     );
     put_text(
         b,
         inner.x,
         inner.y + 5,
+        inner.width,
+        " branch",
+        Style::default().fg(p.overlay0).bg(p.panel_bg),
+    );
+    let branch_input = Rect::new(inner.x, inner.y + 6, inner.width, 1);
+    put_text(
+        b,
+        branch_input.x,
+        branch_input.y,
+        branch_input.width,
+        &format!(" {}", create.branch),
+        Style::default()
+            .fg(p.text)
+            .bg(if create.field == ClientWorktreeCreateField::Branch {
+                p.surface1
+            } else {
+                p.surface0
+            }),
+    );
+    put_text(
+        b,
+        inner.x,
+        inner.y + 8,
         inner.width,
         " checkout",
         Style::default().fg(p.overlay0).bg(p.panel_bg),
@@ -47,7 +75,7 @@ pub(super) fn render_worktree_create_overlay(
     put_text(
         b,
         inner.x,
-        inner.y + 6,
+        inner.y + 9,
         inner.width,
         &format!(" {}", create.checkout_path),
         Style::default().fg(p.subtext0).bg(p.panel_bg),
@@ -56,7 +84,7 @@ pub(super) fn render_worktree_create_overlay(
         put_text(
             b,
             inner.x,
-            inner.y + 8,
+            inner.y + 11,
             inner.width,
             " creating…",
             Style::default().fg(p.accent).bg(p.panel_bg),
@@ -65,13 +93,22 @@ pub(super) fn render_worktree_create_overlay(
         put_text(
             b,
             inner.x,
-            inner.y + 8,
+            inner.y + 11,
             inner.width,
             &format!(" {error}"),
             Style::default().fg(p.red).bg(p.panel_bg),
         );
+    } else {
+        put_text(
+            b,
+            inner.x,
+            inner.y + 11,
+            inner.width,
+            " Tab switches fields · Enter advances or creates",
+            Style::default().fg(p.overlay0).bg(p.panel_bg),
+        );
     }
-    let buttons = row(inner, &[20, 12], 2, 9);
+    let buttons = row(inner, &[20, 12], 2, inner.height.saturating_sub(2));
     let [primary, cancel] = buttons.as_slice() else {
         return None;
     };
@@ -93,17 +130,23 @@ pub(super) fn render_worktree_create_overlay(
             .bg(p.surface0)
             .add_modifier(Modifier::BOLD),
     );
+    let input = if create.field == ClientWorktreeCreateField::TaskName {
+        task_name_input
+    } else {
+        branch_input
+    };
+    let value = if create.field == ClientWorktreeCreateField::TaskName {
+        &create.task_name
+    } else {
+        &create.branch
+    };
     Some(OverlayRender {
         primary: *primary,
-        clear: Rect::default(),
         cancel: *cancel,
-        navigator_popup: Rect::default(),
-        navigator_search: Rect::default(),
-        navigator_rows: Vec::new(),
-        worktree_search: Rect::default(),
-        worktree_rows: Vec::new(),
+        worktree_task_name: task_name_input,
+        worktree_branch: branch_input,
         cursor: (!create.creating).then(|| crate::protocol::CursorState {
-            x: (input.x + 1 + display_width(&create.branch)).min(input.right() - 1),
+            x: (input.x + 1 + display_width(value)).min(input.right().saturating_sub(1)),
             y: input.y,
             visible: true,
             shape: 0,

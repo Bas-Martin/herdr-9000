@@ -53,6 +53,16 @@ pub(crate) fn branch_to_path_slug(branch: &str) -> String {
     }
 }
 
+pub(crate) fn branch_name_for_task(task_name: &str) -> String {
+    let task_name = task_name.trim();
+    if task_name.is_empty() {
+        return "feat/".to_owned();
+    }
+    let slug = branch_to_path_slug(task_name);
+    let max_slug_length = 63usize.saturating_sub("feat/".len());
+    format!("feat/{}", &slug[..slug.len().min(max_slug_length)])
+}
+
 pub(crate) fn expand_tilde_path(path: &str) -> PathBuf {
     expand_tilde_path_from_env(path, cfg!(windows), |key| std::env::var_os(key))
 }

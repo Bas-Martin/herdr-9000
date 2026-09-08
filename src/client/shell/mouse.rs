@@ -1374,6 +1374,20 @@ impl ClientShellState {
                             self.overlay = None;
                             outcome.repaint = true;
                         }
+                    } else if super::contains(self.hits.worktree_task_name, point) {
+                        if let Some(ClientShellOverlay::WorktreeCreate(create)) =
+                            self.overlay.as_mut()
+                        {
+                            create.field = ClientWorktreeCreateField::TaskName;
+                        }
+                        outcome.repaint = true;
+                    } else if super::contains(self.hits.worktree_branch, point) {
+                        if let Some(ClientShellOverlay::WorktreeCreate(create)) =
+                            self.overlay.as_mut()
+                        {
+                            create.field = ClientWorktreeCreateField::Branch;
+                        }
+                        outcome.repaint = true;
                     } else if super::contains(self.hits.worktree_search, point) {
                         if let Some(ClientShellOverlay::WorktreeOpen(open)) = self.overlay.as_mut()
                         {

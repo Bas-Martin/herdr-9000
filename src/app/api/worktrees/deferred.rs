@@ -150,6 +150,26 @@ impl App {
                 Some((project.worktree_root.clone(), project.worktree_base.clone()))
             }
         };
+        if let Some(task_name) = params.task_name.as_deref() {
+            if task_name.trim().is_empty() {
+                Self::send_api_response(
+                    respond_to,
+                    encode_error(id, "invalid_request", "task name must not be empty"),
+                );
+                return;
+            }
+            if params.project_id.is_none() {
+                Self::send_api_response(
+                    respond_to,
+                    encode_error(
+                        id,
+                        "project_not_registered",
+                        "task worktree creation requires a registered project",
+                    ),
+                );
+                return;
+            }
+        }
         let base = params.base.unwrap_or_else(|| {
             project_settings
                 .as_ref()
@@ -227,6 +247,12 @@ impl App {
             source_repo_root: source.source_repo_root,
             repo_key: source.repo_key,
             repo_name: source.repo_name,
+            project_id: params.project_id.clone(),
+            task_name: params
+                .task_name
+                .as_deref()
+                .map(str::trim)
+                .map(str::to_owned),
             label: params.label,
             focus: params.focus,
             respond_to,
@@ -414,7 +440,7 @@ impl App {
         &mut self,
         mut result: crate::events::WorktreeAddResult,
     ) {
-        let Some(api) = result.api_request.take() else {
+        let Some(mut api) = result.api_request.take() else {
             return;
         };
         let checkout_key = api.checkout_key.clone();
@@ -444,6 +470,12 @@ impl App {
         }
 
         let source_workspace_idx = self.api_create_source_workspace_idx(&api);
+        let task_project_id = api.project_id.clone().or_else(|| {
+            self.state
+                .projects
+                .find_by_root(&api.source_repo_root)
+                .map(|project| project.id.clone())
+        });
         let mut source = WorktreeSource {
             workspace_idx: source_workspace_idx,
             source_checkout_path: api.source_checkout_path,
@@ -508,17 +540,63 @@ impl App {
         };
         self.emit_worktree_created_event(ws_idx, worktree.clone());
         let tab_idx = self.state.workspaces[ws_idx].active_tab;
+        let tab = self
+            .tab_info(ws_idx, tab_idx)
+            .expect("created worktree workspace should have an active tab");
+        let root_pane = self
+            .root_pane_info(ws_idx, tab_idx)
+            .expect("created worktree workspace should have an active root pane");
+        let task = if let Some(task_name) = api.task_name.take() {
+            let Some(project_id) = task_project_id else {
+                Self::send_api_response(
+                    api.respond_to,
+                    encode_error(
+                        api.id,
+                        "project_not_registered",
+                        "task worktree creation requires a registered project",
+                    ),
+                );
+                return;
+            };
+            let task = crate::task::Task::new(
+                project_id,
+                task_name,
+                crate::task::TaskLocationMode::Worktree,
+                worktree.branch.clone(),
+                Some(result.path.clone()),
+                None,
+                None,
+                None,
+                Some(self.public_workspace_id(ws_idx)),
+                Some(tab.tab_id.clone()),
+                Some(root_pane.pane_id.clone()),
+            );
+            let previous_tasks = self.state.tasks.clone();
+            self.state.tasks.insert(task.clone());
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                self.state.tasks = previous_tasks;
+                Self::send_api_response(
+                    api.respond_to,
+                    encode_error(
+                        api.id,
+                        "task_save_failed",
+                        format!("worktree created but task could not be saved: {err}"),
+                    ),
+                );
+                return;
+            }
+            Some(self.task_info(&task))
+        } else {
+            None
+        };
         let response = encode_success(
             api.id,
             ResponseResult::WorktreeCreated {
                 workspace: self.workspace_info(ws_idx),
-                tab: self
-                    .tab_info(ws_idx, tab_idx)
-                    .expect("created worktree workspace should have an active tab"),
-                root_pane: self
-                    .root_pane_info(ws_idx, tab_idx)
-                    .expect("created worktree workspace should have an active root pane"),
+                tab,
+                root_pane,
                 worktree,
+                task,
             },
         );
         Self::send_api_response(api.respond_to, response);

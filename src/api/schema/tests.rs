@@ -849,6 +849,7 @@ fn worktree_request_and_response_round_trip() {
                 open_workspace_id: Some("w_1".into()),
                 label: "herdr".into(),
             },
+            task: None,
         },
     };
     let json = serde_json::to_string(&response).unwrap();

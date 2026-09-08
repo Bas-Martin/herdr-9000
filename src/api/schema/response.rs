@@ -41,6 +41,7 @@ pub struct ErrorBody {
     pub message: String,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResponseResult {
@@ -109,6 +110,8 @@ pub enum ResponseResult {
         tab: TabInfo,
         root_pane: PaneInfo,
         worktree: WorktreeInfo,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        task: Option<TaskInfo>,
     },
     WorktreeOpened {
         workspace: WorkspaceInfo,

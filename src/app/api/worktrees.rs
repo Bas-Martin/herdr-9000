@@ -939,6 +939,7 @@ mod tests {
             tab,
             root_pane,
             worktree,
+            ..
         } = success.result
         else {
             panic!("expected worktree_created response");
@@ -1237,6 +1238,8 @@ mod tests {
                 source_repo_root: repo.clone(),
                 repo_key: "repo-key".into(),
                 repo_name: "herdr".into(),
+                project_id: None,
+                task_name: None,
                 label: None,
                 focus: false,
                 respond_to,
@@ -2166,6 +2169,7 @@ mod tests {
                 id: "req".into(),
                 method: crate::api::schema::Method::WorktreeCreate(WorktreeCreateParams {
                     project_id: None,
+                    task_name: None,
                     workspace_id: None,
                     cwd: Some(repo.display().to_string()),
                     branch: Some("worktree/create-remove-in-flight".into()),

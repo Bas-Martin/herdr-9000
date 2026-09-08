@@ -18,6 +18,8 @@ pub(crate) struct OverlayRender {
     pub(crate) navigator_search: Rect,
     pub(crate) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
     pub(crate) worktree_search: Rect,
+    pub(crate) worktree_task_name: Rect,
+    pub(crate) worktree_branch: Rect,
     pub(crate) worktree_rows: Vec<(Rect, usize)>,
     pub(crate) help_popup: Rect,
     pub(crate) help_scrollbar: Rect,

@@ -577,6 +577,8 @@ impl ClientShellState {
                 self.hits.navigator_search = rendered.navigator_search;
                 self.hits.navigator_rows = rendered.navigator_rows;
                 self.hits.worktree_search = rendered.worktree_search;
+                self.hits.worktree_task_name = rendered.worktree_task_name;
+                self.hits.worktree_branch = rendered.worktree_branch;
                 self.hits.worktree_rows = rendered.worktree_rows;
                 self.hits.help_popup = rendered.help_popup;
                 self.hits.help_scrollbar = rendered.help_scrollbar;

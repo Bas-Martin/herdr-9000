@@ -180,6 +180,8 @@ pub(super) struct ShellHitMap {
     pub(super) project_root: Rect,
     pub(super) project_worktree_root: Rect,
     pub(super) overlay_cancel: Rect,
+    pub(super) worktree_task_name: Rect,
+    pub(super) worktree_branch: Rect,
     pub(super) navigator_popup: Rect,
     pub(super) navigator_search: Rect,
     pub(super) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
@@ -489,14 +491,23 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) installing_integrations: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientWorktreeCreateField {
+    TaskName,
+    Branch,
+}
+
 #[derive(Debug)]
 pub(super) struct ClientWorktreeCreateOverlay {
     pub(super) source_workspace_id: String,
     pub(super) project_id: Option<String>,
     pub(super) repo_name: String,
+    pub(super) task_name: String,
     pub(super) branch: String,
     pub(super) worktree_directory: String,
     pub(super) checkout_path: String,
+    pub(super) field: ClientWorktreeCreateField,
+    pub(super) branch_overridden: bool,
     pub(super) replace_on_type: bool,
     pub(super) error: Option<String>,
     pub(super) creating: bool,
