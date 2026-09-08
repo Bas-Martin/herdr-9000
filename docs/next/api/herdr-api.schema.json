@@ -3919,6 +3919,16 @@
               "default": true,
               "type": "boolean"
             },
+            "lifecycle": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/ProjectLifecycle"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "name": {
               "type": "string"
             },
@@ -3955,6 +3965,35 @@
             "name",
             "root_path"
           ],
+          "type": "object"
+        },
+        "ProjectLifecycle": {
+          "properties": {
+            "prepare": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "run": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "setup": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "teardown": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
           "type": "object"
         },
         "ProjectOpenParams": {
@@ -4004,6 +4043,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "lifecycle": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/ProjectLifecycle"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "name": {
@@ -9650,6 +9699,10 @@
                 "null"
               ]
             },
+            "lifecycle": {
+              "$ref": "#/schemas/success_response/$defs/ProjectLifecycle",
+              "default": {}
+            },
             "name": {
               "type": "string"
             },
@@ -9690,6 +9743,35 @@
             "name",
             "root_path"
           ],
+          "type": "object"
+        },
+        "ProjectLifecycle": {
+          "properties": {
+            "prepare": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "run": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "setup": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "teardown": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
           "type": "object"
         },
         "ReadFormat": {
@@ -11441,6 +11523,12 @@
                 "null"
               ]
             },
+            "lifecycle_runs": {
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/TaskLifecycleRunInfo"
+              },
+              "type": "array"
+            },
             "location": {
               "$ref": "#/schemas/success_response/$defs/TaskLocationMode"
             },
@@ -11524,6 +11612,64 @@
             "runtime_available"
           ],
           "type": "object"
+        },
+        "TaskLifecycleRunInfo": {
+          "properties": {
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "finished_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "output": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "started_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/TaskLifecycleStatus"
+            },
+            "step": {
+              "$ref": "#/schemas/success_response/$defs/TaskLifecycleStep"
+            }
+          },
+          "required": [
+            "step",
+            "status",
+            "started_at"
+          ],
+          "type": "object"
+        },
+        "TaskLifecycleStatus": {
+          "enum": [
+            "running",
+            "succeeded",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "TaskLifecycleStep": {
+          "enum": [
+            "prepare",
+            "setup",
+            "run",
+            "teardown"
+          ],
+          "type": "string"
         },
         "TaskLocationMode": {
           "enum": [

@@ -4,6 +4,18 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema, Default)]
+pub struct ProjectLifecycle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prepare: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setup: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub teardown: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ProjectCreateParams {
     pub name: String,
@@ -18,6 +30,8 @@ pub struct ProjectCreateParams {
     pub worktree_base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<ProjectLifecycle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preserve_patterns: Option<Vec<String>>,
 }
@@ -45,6 +59,8 @@ pub struct ProjectUpdateParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_agent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<ProjectLifecycle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preserve_patterns: Option<Vec<String>>,
 }
 
@@ -68,6 +84,8 @@ pub struct ProjectInfo {
     pub worktree_base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_agent: Option<String>,
+    #[serde(default)]
+    pub lifecycle: ProjectLifecycle,
     #[serde(default)]
     pub preserve_patterns: Vec<String>,
 }

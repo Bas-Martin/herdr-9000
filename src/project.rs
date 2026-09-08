@@ -4,6 +4,27 @@ use std::sync::atomic::{AtomicU64, Ordering};
 static NEXT_PROJECT_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) const DEFAULT_WORKTREE_BASE: &str = "origin/main";
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct ProjectLifecycle {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) prepare: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) setup: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) run: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) teardown: Option<String>,
+}
+
+impl ProjectLifecycle {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.prepare.is_none()
+            && self.setup.is_none()
+            && self.run.is_none()
+            && self.teardown.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Project {
     pub(crate) id: String,
@@ -17,8 +38,9 @@ pub(crate) struct Project {
     pub(crate) default_agent: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) preserve_patterns: Vec<String>,
+    #[serde(default, skip_serializing_if = "ProjectLifecycle::is_empty")]
+    pub(crate) lifecycle: ProjectLifecycle,
 }
-
 pub(crate) fn normalize_agent_provider(raw: &str) -> Result<String, String> {
     let value = raw.trim();
     let Some(agent) = crate::detect::parse_agent_label(value) else {
@@ -96,6 +118,7 @@ impl Project {
             worktree_base: None,
             default_agent: None,
             preserve_patterns: Vec::new(),
+            lifecycle: ProjectLifecycle::default(),
         }
     }
 }

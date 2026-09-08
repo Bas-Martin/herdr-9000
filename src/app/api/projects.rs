@@ -27,6 +27,12 @@ impl App {
                 .map(|path| crate::project::display_path(path)),
             worktree_base: project.worktree_base.clone(),
             default_agent: project.default_agent.clone(),
+            lifecycle: crate::api::schema::ProjectLifecycle {
+                prepare: project.lifecycle.prepare.clone(),
+                setup: project.lifecycle.setup.clone(),
+                run: project.lifecycle.run.clone(),
+                teardown: project.lifecycle.teardown.clone(),
+            },
             preserve_patterns: project.preserve_patterns.clone(),
         }
     }
@@ -98,11 +104,16 @@ impl App {
             Ok(patterns) => patterns,
             Err(message) => return encode_error(id, "invalid_params", message),
         };
+        let lifecycle = match normalize_lifecycle(params.lifecycle) {
+            Ok(lifecycle) => lifecycle,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
         let previous = self.state.projects.clone();
         let worktree_base = clean_worktree_base(params.worktree_base);
         let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
         project.default_agent = default_agent;
         project.preserve_patterns = preserve_patterns;
+        project.lifecycle = lifecycle;
         project.worktree_base = worktree_base;
         self.state.projects.insert(project.clone());
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
@@ -195,6 +206,7 @@ impl App {
             None,
             None,
             None,
+            None,
         )
     }
     pub(super) fn handle_project_update(
@@ -211,6 +223,7 @@ impl App {
             params.worktree_base,
             params.default_agent,
             params.preserve_patterns,
+            params.lifecycle,
         )
     }
     fn update_project(
@@ -223,6 +236,7 @@ impl App {
         worktree_base_param: Option<String>,
         default_agent_param: Option<String>,
         preserve_patterns_param: Option<Vec<String>>,
+        lifecycle_param: Option<crate::api::schema::ProjectLifecycle>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -276,6 +290,13 @@ impl App {
             },
             None => existing.preserve_patterns.clone(),
         };
+        let lifecycle = match lifecycle_param {
+            Some(lifecycle) => match normalize_lifecycle(Some(lifecycle)) {
+                Ok(lifecycle) => lifecycle,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => existing.lifecycle.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
@@ -286,6 +307,7 @@ impl App {
         project.name = name.to_owned();
         project.root_path = root_path;
         project.worktree_root = worktree_root;
+        project.lifecycle = lifecycle;
         project.worktree_base = worktree_base;
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
             self.state.projects = previous;
@@ -361,6 +383,7 @@ fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>
     let mut patterns = Vec::new();
     for raw in values {
         let pattern = raw.trim().replace('\\', "/");
+
         let pattern = pattern.strip_prefix("./").unwrap_or(&pattern);
         if pattern.is_empty() {
             continue;
@@ -378,6 +401,38 @@ fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>
         }
     }
     Ok(patterns)
+}
+fn normalize_lifecycle(
+    value: Option<crate::api::schema::ProjectLifecycle>,
+) -> Result<crate::project::ProjectLifecycle, String> {
+    let Some(value) = value else {
+        return Ok(crate::project::ProjectLifecycle::default());
+    };
+    Ok(crate::project::ProjectLifecycle {
+        prepare: normalize_lifecycle_command(value.prepare, "prepare")?,
+        setup: normalize_lifecycle_command(value.setup, "setup")?,
+        run: normalize_lifecycle_command(value.run, "run")?,
+        teardown: normalize_lifecycle_command(value.teardown, "teardown")?,
+    })
+}
+
+fn normalize_lifecycle_command(
+    value: Option<String>,
+    step: &str,
+) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > 8192 || value.chars().any(char::is_control) {
+        return Err(format!(
+            "lifecycle {step} command must be printable and at most 8192 bytes"
+        ));
+    }
+    Ok(Some(value))
 }
 
 fn project_not_found(id: String, project_id: &str) -> String {

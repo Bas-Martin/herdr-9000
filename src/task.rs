@@ -31,6 +31,37 @@ pub(crate) enum TaskStatus {
     Closed,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskLifecycleStep {
+    Prepare,
+    Setup,
+    Run,
+    Teardown,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskLifecycleStatus {
+    Running,
+    Succeeded,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TaskLifecycleRun {
+    pub(crate) step: TaskLifecycleStep,
+    pub(crate) status: TaskLifecycleStatus,
+    pub(crate) started_at: u64,
+    pub(crate) finished_at: Option<u64>,
+    pub(crate) output: Option<String>,
+    pub(crate) error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Task {
     pub(crate) id: String,
@@ -48,6 +79,8 @@ pub(crate) struct Task {
     pub(crate) error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent_session: Option<crate::agent_resume::PersistedAgentSession>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) lifecycle_runs: Vec<TaskLifecycleRun>,
     pub(crate) status: TaskStatus,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
@@ -121,6 +154,7 @@ impl Task {
             agent_command: None,
             error: None,
             agent_session: None,
+            lifecycle_runs: Vec::new(),
             status: TaskStatus::Open,
             created_at: now,
             updated_at: now,

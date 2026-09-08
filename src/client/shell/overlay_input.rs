@@ -719,6 +719,7 @@ impl ClientShellState {
                 worktree_base: None,
                 default_agent: None,
                 preserve_patterns: None,
+                lifecycle: None,
             })
         } else {
             crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
@@ -730,6 +731,7 @@ impl ClientShellState {
                 worktree_base: None,
                 default_agent: None,
                 preserve_patterns: None,
+                lifecycle: None,
             })
         };
         project.submitting = true;
@@ -1477,6 +1479,7 @@ impl ClientShellState {
                 worktree_base: patterns.worktree_base.clone(),
                 default_agent: None,
                 preserve_patterns: Some(patterns.patterns.clone()),
+                lifecycle: None,
             });
         if !self.push_endpoint_method_with_kind(method, PendingEndpointKind::ProjectUpdate, outcome)
         {
@@ -1512,6 +1515,7 @@ impl ClientShellState {
                     worktree_base: Some(trimmed.to_owned()),
                     default_agent: None,
                     preserve_patterns: None,
+                    lifecycle: None,
                 },
             )),
             ClientRenameTarget::ProjectDefaultAgent {
@@ -1528,6 +1532,7 @@ impl ClientShellState {
                     worktree_base: None,
                     default_agent: Some(trimmed.to_owned()),
                     preserve_patterns: None,
+                    lifecycle: None,
                 },
             )),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {

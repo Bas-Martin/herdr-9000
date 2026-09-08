@@ -6,7 +6,9 @@ use crate::api::schema::{
 };
 use crate::app::App;
 use crate::events::AppEvent;
-use crate::task::{Task, TaskLocationMode, TaskStatus};
+use crate::task::{
+    Task, TaskLifecycleRun, TaskLifecycleStatus, TaskLifecycleStep, TaskLocationMode, TaskStatus,
+};
 
 use super::responses::{encode_error, encode_success};
 
@@ -93,10 +95,21 @@ impl App {
             self.state.tasks = previous;
             return encode_error(id, "task_save_failed", err.to_string());
         }
+        let task_id = task.id.clone();
+        if task.location == TaskLocationMode::Worktree {
+            if let Err(err) = self.run_task_lifecycle(&task_id) {
+                tracing::warn!(task_id, error = %err, "task lifecycle failed");
+            }
+        }
+        let task = self
+            .state
+            .tasks
+            .find(&task_id)
+            .expect("saved task should remain available");
         encode_success(
             id,
             ResponseResult::TaskCreated {
-                task: self.task_info(&task),
+                task: self.task_info(task),
             },
         )
     }
@@ -150,6 +163,125 @@ impl App {
             return Err(message);
         }
         self.schedule_task_agent_prompt(task.id, 0);
+        Ok(())
+    }
+    pub(super) fn run_task_lifecycle(&mut self, task_id: &str) -> Result<(), String> {
+        let Some(task) = self.state.tasks.find(task_id).cloned() else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            let message = format!("project {} no longer exists", task.project_id);
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let Some(workspace_path) = task_workspace_path(&task, &project) else {
+            let message = "task has no workspace path for lifecycle commands".to_owned();
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let steps = [
+            (TaskLifecycleStep::Prepare, project.lifecycle.prepare),
+            (TaskLifecycleStep::Setup, project.lifecycle.setup),
+            (TaskLifecycleStep::Run, project.lifecycle.run),
+        ];
+        for (step, command) in steps {
+            if let Some(command) = command {
+                self.run_task_lifecycle_step(task_id, step, &workspace_path, &command)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn run_task_teardown(&mut self, task_id: &str) -> Result<(), String> {
+        let Some(task) = self.state.tasks.find(task_id).cloned() else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            let message = format!("project {} no longer exists", task.project_id);
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let Some(command) = project.lifecycle.teardown.as_deref() else {
+            return Ok(());
+        };
+        let Some(workspace_path) = task_workspace_path(&task, &project) else {
+            let message = "task has no workspace path for teardown".to_owned();
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        self.run_task_lifecycle_step(
+            task_id,
+            TaskLifecycleStep::Teardown,
+            &workspace_path,
+            command,
+        )
+    }
+
+    fn run_task_lifecycle_step(
+        &mut self,
+        task_id: &str,
+        step: TaskLifecycleStep,
+        workspace_path: &std::path::Path,
+        command: &str,
+    ) -> Result<(), String> {
+        let started_at = crate::task::current_unix_ms();
+        let previous = self.state.tasks.clone();
+        let Some(task) = self.state.tasks.find_mut(task_id) else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        task.lifecycle_runs.push(TaskLifecycleRun {
+            step,
+            status: TaskLifecycleStatus::Running,
+            started_at,
+            finished_at: None,
+            output: None,
+            error: None,
+        });
+        task.updated_at = started_at;
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return Err(format!("lifecycle run could not be saved: {err}"));
+        }
+
+        let (output, error) = run_lifecycle_command(workspace_path, command);
+        let finished_at = crate::task::current_unix_ms();
+        let Some(task) = self.state.tasks.find_mut(task_id) else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        let run = task
+            .lifecycle_runs
+            .last_mut()
+            .expect("lifecycle run was inserted above");
+        run.status = if error.is_some() {
+            TaskLifecycleStatus::Failed
+        } else {
+            TaskLifecycleStatus::Succeeded
+        };
+        run.finished_at = Some(finished_at);
+        run.output = output;
+        run.error = error.clone();
+        task.updated_at = finished_at;
+        if let Some(error) = error {
+            task.error = Some(format!(
+                "lifecycle {} failed: {error}",
+                lifecycle_step_label(step)
+            ));
+        }
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            tracing::error!(task_id, error = %err, "failed to persist lifecycle result");
+        }
+        if let Some(error) = self
+            .state
+            .tasks
+            .find(task_id)
+            .and_then(|task| task.lifecycle_runs.last())
+            .and_then(|run| run.error.clone())
+        {
+            return Err(format!(
+                "lifecycle {} failed: {error}",
+                lifecycle_step_label(step)
+            ));
+        }
         Ok(())
     }
 
@@ -370,6 +502,16 @@ impl App {
     }
 
     pub(super) fn handle_task_close(&mut self, id: String, target: TaskTarget) -> String {
+        let should_teardown = self
+            .state
+            .tasks
+            .find(&target.task_id)
+            .is_some_and(|task| task.status != TaskStatus::Closed);
+        if should_teardown {
+            if let Err(err) = self.run_task_teardown(&target.task_id) {
+                tracing::warn!(task_id = %target.task_id, error = %err, "task teardown failed");
+            }
+        }
         let previous = self.state.tasks.clone();
         let Some(task) = self.state.tasks.find_mut(&target.task_id) else {
             return task_not_found(id, &target.task_id);
@@ -450,6 +592,18 @@ impl App {
                 }
             }),
             error: task.error.clone(),
+            lifecycle_runs: task
+                .lifecycle_runs
+                .iter()
+                .map(|run| crate::api::schema::TaskLifecycleRunInfo {
+                    step: run.step,
+                    status: run.status,
+                    started_at: run.started_at,
+                    finished_at: run.finished_at,
+                    output: run.output.clone(),
+                    error: run.error.clone(),
+                })
+                .collect(),
             status: task.status,
             created_at: task.created_at,
             updated_at: task.updated_at,
@@ -562,6 +716,75 @@ impl App {
         self.state.focus_pane_in_workspace(workspace_index, pane);
         self.state.mode = crate::app::Mode::Terminal;
     }
+}
+fn task_workspace_path(
+    task: &Task,
+    project: &crate::project::Project,
+) -> Option<std::path::PathBuf> {
+    match task.location {
+        TaskLocationMode::Repository => Some(project.root_path.clone()),
+        TaskLocationMode::Worktree => task.worktree_path.clone(),
+    }
+}
+
+fn lifecycle_step_label(step: TaskLifecycleStep) -> &'static str {
+    match step {
+        TaskLifecycleStep::Prepare => "prepare",
+        TaskLifecycleStep::Setup => "setup",
+        TaskLifecycleStep::Run => "run",
+        TaskLifecycleStep::Teardown => "teardown",
+    }
+}
+
+fn run_lifecycle_command(
+    workspace_path: &std::path::Path,
+    command_text: &str,
+) -> (Option<String>, Option<String>) {
+    let mut command =
+        crate::noninteractive_process::command(if cfg!(windows) { "cmd" } else { "sh" });
+    if cfg!(windows) {
+        command.args(["/D", "/C", command_text]);
+    } else {
+        command.args(["-c", command_text]);
+    }
+    let output = command
+        .current_dir(workspace_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .output();
+    let output = match output {
+        Ok(output) => output,
+        Err(err) => return (None, Some(format!("could not start command: {err}"))),
+    };
+    let text = lifecycle_output(&output.stdout, &output.stderr);
+    let error = (!output.status.success()).then(|| {
+        format!(
+            "command exited with status {}",
+            output
+                .status
+                .code()
+                .map_or_else(|| "unknown".to_owned(), |code| code.to_string())
+        )
+    });
+    (text, error)
+}
+
+fn lifecycle_output(stdout: &[u8], stderr: &[u8]) -> Option<String> {
+    const MAX_LIFECYCLE_OUTPUT_BYTES: usize = 64 * 1024;
+    let mut bytes = Vec::with_capacity(stdout.len().saturating_add(stderr.len() + 10));
+    bytes.extend_from_slice(stdout);
+    if !stdout.is_empty() && !stderr.is_empty() {
+        bytes.extend_from_slice(b"\n");
+    }
+    bytes.extend_from_slice(stderr);
+    let truncated = bytes.len() > MAX_LIFECYCLE_OUTPUT_BYTES;
+    bytes.truncate(MAX_LIFECYCLE_OUTPUT_BYTES);
+    let mut text = String::from_utf8_lossy(&bytes).into_owned();
+    if truncated {
+        text.push_str("\n[herdr truncated lifecycle output]");
+    }
+    (!text.is_empty()).then_some(text)
 }
 
 fn clean_optional(value: Option<String>) -> Option<String> {

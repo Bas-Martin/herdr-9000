@@ -91,6 +91,7 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
         worktree_base: None,
         default_agent: None,
         preserve_patterns: None,
+        lifecycle: None,
     })
 }
 
