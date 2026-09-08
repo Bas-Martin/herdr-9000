@@ -115,7 +115,6 @@ impl App {
             );
             return;
         }
-        let base = params.base.unwrap_or_else(|| "HEAD".into());
         let source = match self.resolve_worktree_source(params.workspace_id, params.cwd) {
             Ok(source) => source,
             Err(err) => {
@@ -139,6 +138,13 @@ impl App {
             );
             return;
         }
+        let base = params.base.unwrap_or_else(|| {
+            self.state
+                .projects
+                .find_by_root(&source.source_repo_root)
+                .and_then(|project| project.worktree_base.clone())
+                .unwrap_or_else(|| crate::project::DEFAULT_WORKTREE_BASE.to_owned())
+        });
         let checkout_path = match params.path {
             Some(path) => match absolute_user_path(&path) {
                 Ok(path) => path,

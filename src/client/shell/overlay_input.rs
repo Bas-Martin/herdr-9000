@@ -388,6 +388,28 @@ impl ClientShellState {
         }));
     }
 
+    pub(super) fn open_project_base_overlay(&mut self) {
+        let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
+            title: "worktree base",
+            input: project
+                .worktree_base
+                .unwrap_or_else(|| crate::project::DEFAULT_WORKTREE_BASE.to_owned()),
+            replace_on_type: false,
+            target: ClientRenameTarget::ProjectBase {
+                project_id: project.project_id,
+                name: project.name,
+                root_path: project.root_path,
+                worktree_root: project.worktree_root,
+            },
+        }));
+    }
+
     pub(super) fn open_project_edit_overlay(&mut self) {
         let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
             ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
@@ -653,6 +675,7 @@ impl ClientShellState {
                 name,
                 root_path,
                 worktree_root: Some(worktree_root),
+                worktree_base: None,
             })
         } else {
             crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
@@ -661,6 +684,7 @@ impl ClientShellState {
                 open: true,
                 focus: true,
                 worktree_root: (!worktree_root.is_empty()).then_some(worktree_root),
+                worktree_base: None,
             })
         };
         project.submitting = true;
@@ -1147,6 +1171,7 @@ impl ClientShellState {
             match key.code {
                 KeyCode::Esc => self.overlay = None,
                 KeyCode::Char('e') | KeyCode::Char('E') => self.open_project_edit_overlay(),
+                KeyCode::Char('b') | KeyCode::Char('B') => self.open_project_base_overlay(),
                 KeyCode::Enter | KeyCode::Char('r') | KeyCode::Char('R') => {
                     self.open_project_rename_overlay()
                 }
@@ -1269,6 +1294,20 @@ impl ClientShellState {
                     name: trimmed.to_owned(),
                 })
             }),
+            ClientRenameTarget::ProjectBase {
+                project_id,
+                name,
+                root_path,
+                worktree_root,
+            } => Some(crate::api::schema::Method::ProjectUpdate(
+                crate::api::schema::ProjectUpdateParams {
+                    project_id,
+                    name,
+                    root_path,
+                    worktree_root,
+                    worktree_base: Some(trimmed.to_owned()),
+                },
+            )),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {
                 crate::api::schema::Method::WorkspaceRename(
                     crate::api::schema::WorkspaceRenameParams {

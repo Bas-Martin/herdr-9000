@@ -175,6 +175,7 @@ pub(super) struct ShellHitMap {
     pub(super) overlay_clear: Rect,
     pub(super) project_edit: Rect,
     pub(super) project_rename: Rect,
+    pub(super) project_base: Rect,
     pub(super) project_name: Rect,
     pub(super) project_root: Rect,
     pub(super) project_worktree_root: Rect,
@@ -355,6 +356,12 @@ pub(super) enum ClientShellOverlayKind {
 pub(super) enum ClientRenameTarget {
     Project {
         project_id: String,
+    },
+    ProjectBase {
+        project_id: String,
+        name: String,
+        root_path: String,
+        worktree_root: Option<String>,
     },
     Workspace {
         workspace_id: String,

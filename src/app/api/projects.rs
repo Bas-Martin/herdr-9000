@@ -25,6 +25,7 @@ impl App {
                 .worktree_root
                 .as_ref()
                 .map(|path| crate::project::display_path(path)),
+            worktree_base: project.worktree_base.clone(),
         }
     }
 
@@ -87,9 +88,10 @@ impl App {
                 format!("project already exists: {}", existing.id),
             );
         }
-
         let previous = self.state.projects.clone();
-        let project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
+        let worktree_base = clean_worktree_base(params.worktree_base);
+        let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
+        project.worktree_base = worktree_base;
         self.state.projects.insert(project.clone());
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
             self.state.projects = previous.clone();
@@ -172,9 +174,8 @@ impl App {
         id: String,
         params: ProjectRenameParams,
     ) -> String {
-        self.update_project(id, params.project_id, params.name, None, None)
+        self.update_project(id, params.project_id, params.name, None, None, None)
     }
-
     pub(super) fn handle_project_update(
         &mut self,
         id: String,
@@ -186,6 +187,7 @@ impl App {
             params.name,
             Some(params.root_path),
             params.worktree_root,
+            params.worktree_base,
         )
     }
 
@@ -196,6 +198,7 @@ impl App {
         name: String,
         root_path_param: Option<String>,
         worktree_root_param: Option<String>,
+        worktree_base_param: Option<String>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -231,6 +234,10 @@ impl App {
             },
             None => existing.worktree_root.clone(),
         };
+        let worktree_base = match worktree_base_param {
+            Some(base) => clean_worktree_base(Some(base)),
+            None => existing.worktree_base.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
@@ -239,6 +246,7 @@ impl App {
         project.name = name.to_owned();
         project.root_path = root_path;
         project.worktree_root = worktree_root;
+        project.worktree_base = worktree_base;
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
             self.state.projects = previous;
             return encode_error(id, "project_save_failed", err.to_string());
@@ -290,6 +298,13 @@ impl App {
             },
         )
     }
+}
+
+fn clean_worktree_base(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let value = value.trim().to_owned();
+        (!value.is_empty()).then_some(value)
+    })
 }
 
 fn project_not_found(id: String, project_id: &str) -> String {

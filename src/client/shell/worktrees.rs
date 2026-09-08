@@ -268,8 +268,8 @@ impl ClientShellState {
             return;
         }
         let branch = create.branch.trim().to_owned();
-        if branch.is_empty() {
-            create.error = Some("branch is required".to_owned());
+        if branch.is_empty() || branch == "feat/" {
+            create.error = Some("branch name is required after feat/".to_owned());
             outcome.repaint = true;
             return;
         }
@@ -285,7 +285,7 @@ impl ClientShellState {
                 workspace_id: Some(workspace_id),
                 cwd: None,
                 branch: Some(branch),
-                base: Some("HEAD".to_owned()),
+                base: None,
                 path: None,
                 label: None,
                 focus: true,
@@ -395,11 +395,7 @@ impl ClientShellState {
                 PendingEndpointKind::PrepareWorktreeCreate { workspace_id },
                 Ok(ResponseResult::WorktreeList { source, .. }),
             ) => {
-                let seed = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|duration| duration.as_micros().min(u128::from(u64::MAX)) as u64)
-                    .unwrap_or(0);
-                let branch = crate::worktree::generated_branch_slug(seed);
+                let branch = "feat/".to_owned();
                 let Some(worktree_directory) = source
                     .worktree_root
                     .clone()
@@ -416,7 +412,7 @@ impl ClientShellState {
                         branch,
                         worktree_directory,
                         checkout_path,
-                        replace_on_type: true,
+                        replace_on_type: false,
                         error: None,
                         creating: false,
                     },
