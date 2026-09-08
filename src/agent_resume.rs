@@ -5,12 +5,18 @@ use serde::{Deserialize, Serialize};
 const MAX_SESSION_ID_LEN: usize = 512;
 const MAX_SESSION_PATH_LEN: usize = 4096;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentSessionRef {
     pub kind: AgentSessionRefKind,
     pub value: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistedAgentSession {
+    pub source: String,
+    pub agent: String,
+    pub session_ref: AgentSessionRef,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentSessionRefKind {
@@ -23,13 +29,6 @@ pub struct AgentResumePlan {
     pub agent: String,
     pub argv: Vec<String>,
     pub dedupe_key: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PersistedAgentSession {
-    pub source: String,
-    pub agent: String,
-    pub session_ref: AgentSessionRef,
 }
 
 impl AgentSessionRef {

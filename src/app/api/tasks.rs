@@ -247,6 +247,41 @@ impl App {
             tracing::error!(task_id, error = %err, "failed to persist task error");
         }
     }
+    pub(super) fn record_task_agent_session(
+        &mut self,
+        pane_id: crate::layout::PaneId,
+        source: String,
+        agent: String,
+        session_ref: crate::agent_resume::AgentSessionRef,
+    ) {
+        let Some((workspace_index, _)) = self.find_pane(pane_id) else {
+            return;
+        };
+        let Some(public_pane_id) = self.public_pane_id(workspace_index, pane_id) else {
+            return;
+        };
+        let persisted = crate::agent_resume::PersistedAgentSession {
+            source,
+            agent,
+            session_ref,
+        };
+        let now = crate::task::current_unix_ms();
+        let mut changed = false;
+        for task in &mut self.state.tasks.tasks {
+            if task.pane_id.as_deref() == Some(public_pane_id.as_str())
+                && task.agent_session.as_ref() != Some(&persisted)
+            {
+                task.agent_session = Some(persisted.clone());
+                task.updated_at = now;
+                changed = true;
+            }
+        }
+        if changed {
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                tracing::error!(error = %err, "failed to persist task agent session");
+            }
+        }
+    }
 
     pub(super) fn handle_task_list(&mut self, id: String, params: TaskListParams) -> String {
         if let Some(project_id) = params.project_id.as_deref() {
@@ -406,6 +441,14 @@ impl App {
             model: task.model.clone(),
             prompt: task.prompt.clone(),
             agent_command: task.agent_command.clone(),
+            agent_session: task.agent_session.as_ref().map(|session| {
+                crate::api::schema::AgentSessionInfo {
+                    source: session.source.clone(),
+                    agent: session.agent.clone(),
+                    kind: session.session_ref.kind,
+                    value: session.session_ref.value.clone(),
+                }
+            }),
             error: task.error.clone(),
             status: task.status,
             created_at: task.created_at,

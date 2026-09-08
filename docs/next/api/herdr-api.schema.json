@@ -11381,6 +11381,16 @@
                 "null"
               ]
             },
+            "agent_session": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/AgentSessionInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "branch": {
               "type": [
                 "string",

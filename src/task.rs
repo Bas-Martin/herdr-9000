@@ -46,6 +46,8 @@ pub(crate) struct Task {
     pub(crate) agent_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent_session: Option<crate::agent_resume::PersistedAgentSession>,
     pub(crate) status: TaskStatus,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
@@ -118,6 +120,7 @@ impl Task {
             prompt,
             agent_command: None,
             error: None,
+            agent_session: None,
             status: TaskStatus::Open,
             created_at: now,
             updated_at: now,

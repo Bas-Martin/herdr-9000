@@ -71,6 +71,8 @@ pub struct TaskInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_session: Option<super::agents::AgentSessionInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     pub status: TaskStatus,
     pub created_at: u64,

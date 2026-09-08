@@ -307,8 +307,35 @@ impl App {
                 None
             };
         let terminal_cwd_reported = matches!(ev, AppEvent::TerminalCwdReported { .. });
+        let task_agent_session = match &ev {
+            AppEvent::HookStateReported {
+                pane_id,
+                source,
+                agent_label,
+                session_ref,
+                ..
+            }
+            | AppEvent::AgentSessionReported {
+                pane_id,
+                source,
+                agent_label,
+                session_ref,
+                ..
+            } => session_ref.as_ref().map(|session_ref| {
+                (
+                    *pane_id,
+                    source.clone(),
+                    agent_label.clone(),
+                    session_ref.clone(),
+                )
+            }),
+            _ => None,
+        };
         let previous_toast = self.state.toast.clone();
         let mut pane_updates = self.state.handle_app_event(ev);
+        if let Some((pane_id, source, agent_label, session_ref)) = task_agent_session {
+            self.record_task_agent_session(pane_id, source, agent_label, session_ref);
+        }
         if update_ready.is_some() {
             self.state.latest_release_notes = crate::release_notes::load_latest();
         }
