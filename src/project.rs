@@ -15,6 +15,8 @@ pub(crate) struct Project {
     pub(crate) worktree_base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) default_agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) preserve_patterns: Vec<String>,
 }
 
 pub(crate) fn normalize_agent_provider(raw: &str) -> Result<String, String> {
@@ -93,6 +95,7 @@ impl Project {
             worktree_root,
             worktree_base: None,
             default_agent: None,
+            preserve_patterns: Vec::new(),
         }
     }
 }

@@ -696,6 +696,7 @@ impl ClientShellState {
                 worktree_root: Some(worktree_root),
                 worktree_base: None,
                 default_agent: None,
+                preserve_patterns: None,
             })
         } else {
             crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
@@ -706,6 +707,7 @@ impl ClientShellState {
                 worktree_root: (!worktree_root.is_empty()).then_some(worktree_root),
                 worktree_base: None,
                 default_agent: None,
+                preserve_patterns: None,
             })
         };
         project.submitting = true;
@@ -1331,6 +1333,7 @@ impl ClientShellState {
                     worktree_root,
                     worktree_base: Some(trimmed.to_owned()),
                     default_agent: None,
+                    preserve_patterns: None,
                 },
             )),
             ClientRenameTarget::ProjectDefaultAgent {
@@ -1346,6 +1349,7 @@ impl ClientShellState {
                     worktree_root,
                     worktree_base: None,
                     default_agent: Some(trimmed.to_owned()),
+                    preserve_patterns: None,
                 },
             )),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {

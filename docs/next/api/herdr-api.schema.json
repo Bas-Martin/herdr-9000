@@ -3926,6 +3926,15 @@
               "default": false,
               "type": "boolean"
             },
+            "preserve_patterns": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
             "root_path": {
               "type": "string"
             },
@@ -3999,6 +4008,15 @@
             },
             "name": {
               "type": "string"
+            },
+            "preserve_patterns": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             },
             "project_id": {
               "type": "string"
@@ -9634,6 +9652,13 @@
             },
             "name": {
               "type": "string"
+            },
+            "preserve_patterns": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "project_id": {
               "type": "string"

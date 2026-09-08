@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -180,6 +181,204 @@ fn repository_git_args(repo_root: &Path, trust_repository: bool) -> Vec<String> 
 
 fn git_path_arg(path: &Path) -> String {
     crate::project::display_path(path).replace('\\', "/")
+}
+pub(crate) fn preserve_ignored_files(
+    source_repo_root: &Path,
+    destination: &Path,
+    patterns: &[String],
+) -> Result<(), String> {
+    if patterns.is_empty() {
+        return Ok(());
+    }
+    let tracked: HashSet<String> = git_file_paths(source_repo_root, &["ls-files"])?
+        .iter()
+        .map(|path| normalize_repo_relative_path(path))
+        .collect();
+    let mut candidates = git_file_paths(
+        source_repo_root,
+        &["ls-files", "--others", "--exclude-standard"],
+    )?;
+    candidates.extend(git_file_paths(
+        source_repo_root,
+        &["ls-files", "--others", "--ignored", "--exclude-standard"],
+    )?);
+    let mut copied = HashSet::new();
+    for candidate in candidates {
+        let source = source_repo_root.join(&candidate);
+        let relative = normalize_repo_relative_path(&candidate);
+        if relative.is_empty()
+            || relative
+                .split('/')
+                .any(|component| component == ".git" || component == "..")
+            || !copied.insert(relative.clone())
+            || tracked.contains(&relative)
+        {
+            continue;
+        }
+        let metadata = std::fs::symlink_metadata(&source)
+            .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            copy_preserved_directory(&source, destination, &relative, patterns, &tracked)?;
+        } else if metadata.is_file() && matches_preserve_pattern(&relative, patterns) {
+            copy_preserved_file(&source, destination, &relative)?;
+        }
+    }
+    Ok(())
+}
+
+fn git_file_paths(repo_root: &Path, args: &[&str]) -> Result<Vec<PathBuf>, String> {
+    let mut command = repository_git_command(repo_root, false);
+    command.args(args).arg("-z");
+    let output = command
+        .output()
+        .map_err(|err| format!("failed to list repository files: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "failed to list repository files: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(output
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|path| !path.is_empty())
+        .map(|path| PathBuf::from(String::from_utf8_lossy(path).into_owned()))
+        .collect())
+}
+
+fn normalize_repo_relative_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn copy_preserved_directory(
+    source: &Path,
+    destination: &Path,
+    relative: &str,
+    patterns: &[String],
+    tracked: &HashSet<String>,
+) -> Result<(), String> {
+    let entries = std::fs::read_dir(source)
+        .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
+        let entry_path = entry.path();
+        let entry_relative = format!("{relative}/{}", entry.file_name().to_string_lossy());
+        if entry_relative
+            .split('/')
+            .any(|component| component == ".git" || component == "..")
+        {
+            continue;
+        }
+        let metadata = std::fs::symlink_metadata(&entry_path)
+            .map_err(|err| format!("failed to inspect preserved path {entry_relative}: {err}"))?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() {
+            copy_preserved_directory(&entry_path, destination, &entry_relative, patterns, tracked)?;
+        } else if metadata.is_file()
+            && !tracked.contains(&entry_relative)
+            && matches_preserve_pattern(&entry_relative, patterns)
+        {
+            copy_preserved_file(&entry_path, destination, &entry_relative)?;
+        }
+    }
+    Ok(())
+}
+
+fn copy_preserved_file(source: &Path, destination: &Path, relative: &str) -> Result<(), String> {
+    let target = destination.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
+    }
+    std::fs::copy(source, &target)
+        .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
+    Ok(())
+}
+
+fn matches_preserve_pattern(relative: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|pattern| {
+        glob_matches(pattern, relative)
+            || (!pattern.contains('/')
+                && relative
+                    .split('/')
+                    .any(|component| glob_matches(pattern, component)))
+    })
+}
+
+fn glob_matches(pattern: &str, value: &str) -> bool {
+    let pattern: Vec<char> = pattern.chars().collect();
+    let value: Vec<char> = value.chars().collect();
+    let mut memo = vec![vec![None; value.len() + 1]; pattern.len() + 1];
+    glob_matches_at(&pattern, &value, 0, 0, &mut memo)
+}
+
+fn glob_matches_at(
+    pattern: &[char],
+    value: &[char],
+    pattern_index: usize,
+    value_index: usize,
+    memo: &mut [Vec<Option<bool>>],
+) -> bool {
+    if let Some(result) = memo[pattern_index][value_index] {
+        return result;
+    }
+    let result = if pattern_index == pattern.len() {
+        value_index == value.len()
+    } else {
+        match pattern[pattern_index] {
+            '?' => {
+                value_index < value.len()
+                    && value[value_index] != '/'
+                    && glob_matches_at(pattern, value, pattern_index + 1, value_index + 1, memo)
+            }
+            '*' if pattern_index + 1 < pattern.len() && pattern[pattern_index + 1] == '*' => {
+                let mut next = pattern_index + 2;
+                while next < pattern.len() && pattern[next] == '*' {
+                    next += 1;
+                }
+                if next < pattern.len() && pattern[next] == '/' {
+                    glob_matches_at(pattern, value, next + 1, value_index, memo)
+                        || (value_index < value.len()
+                            && glob_matches_at(
+                                pattern,
+                                value,
+                                pattern_index,
+                                value_index + 1,
+                                memo,
+                            ))
+                } else {
+                    glob_matches_at(pattern, value, next, value_index, memo)
+                        || (value_index < value.len()
+                            && glob_matches_at(
+                                pattern,
+                                value,
+                                pattern_index,
+                                value_index + 1,
+                                memo,
+                            ))
+                }
+            }
+            '*' => {
+                glob_matches_at(pattern, value, pattern_index + 1, value_index, memo)
+                    || (value_index < value.len()
+                        && value[value_index] != '/'
+                        && glob_matches_at(pattern, value, pattern_index, value_index + 1, memo))
+            }
+            character => {
+                value_index < value.len()
+                    && character == value[value_index]
+                    && glob_matches_at(pattern, value, pattern_index + 1, value_index + 1, memo)
+            }
+        }
+    };
+    memo[pattern_index][value_index] = Some(result);
+    result
 }
 
 pub(crate) fn default_checkout_path(root: &Path, repo_name: &str, branch: &str) -> PathBuf {

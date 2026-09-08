@@ -27,6 +27,7 @@ impl App {
                 .map(|path| crate::project::display_path(path)),
             worktree_base: project.worktree_base.clone(),
             default_agent: project.default_agent.clone(),
+            preserve_patterns: project.preserve_patterns.clone(),
         }
     }
 
@@ -93,10 +94,15 @@ impl App {
             Ok(agent) => agent,
             Err(message) => return encode_error(id, "invalid_params", message),
         };
+        let preserve_patterns = match normalize_preserve_patterns(params.preserve_patterns) {
+            Ok(patterns) => patterns,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
         let previous = self.state.projects.clone();
         let worktree_base = clean_worktree_base(params.worktree_base);
         let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
         project.default_agent = default_agent;
+        project.preserve_patterns = preserve_patterns;
         project.worktree_base = worktree_base;
         self.state.projects.insert(project.clone());
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
@@ -180,7 +186,16 @@ impl App {
         id: String,
         params: ProjectRenameParams,
     ) -> String {
-        self.update_project(id, params.project_id, params.name, None, None, None, None)
+        self.update_project(
+            id,
+            params.project_id,
+            params.name,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     }
     pub(super) fn handle_project_update(
         &mut self,
@@ -195,6 +210,7 @@ impl App {
             params.worktree_root,
             params.worktree_base,
             params.default_agent,
+            params.preserve_patterns,
         )
     }
     fn update_project(
@@ -206,6 +222,7 @@ impl App {
         worktree_root_param: Option<String>,
         worktree_base_param: Option<String>,
         default_agent_param: Option<String>,
+        preserve_patterns_param: Option<Vec<String>>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -252,10 +269,18 @@ impl App {
             },
             None => existing.default_agent.clone(),
         };
+        let preserve_patterns = match preserve_patterns_param {
+            Some(patterns) => match normalize_preserve_patterns(Some(patterns)) {
+                Ok(patterns) => patterns,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => existing.preserve_patterns.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
         };
+        project.preserve_patterns = preserve_patterns;
         project.default_agent = default_agent;
         let old_root_path = project.root_path.clone();
         project.name = name.to_owned();
@@ -327,6 +352,32 @@ fn normalize_default_agent(value: Option<String>) -> Result<Option<String>, Stri
         return Ok(None);
     };
     crate::project::normalize_agent_provider(&value).map(Some)
+}
+
+fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>, String> {
+    let Some(values) = value else {
+        return Ok(Vec::new());
+    };
+    let mut patterns = Vec::new();
+    for raw in values {
+        let pattern = raw.trim().replace('\\', "/");
+        let pattern = pattern.strip_prefix("./").unwrap_or(&pattern);
+        if pattern.is_empty() {
+            continue;
+        }
+        if pattern.starts_with('/')
+            || pattern.contains(':')
+            || pattern.split('/').any(|part| part == "..")
+        {
+            return Err(format!(
+                "preserve pattern must be repository-relative: {raw}"
+            ));
+        }
+        if !patterns.iter().any(|existing| existing == pattern) {
+            patterns.push(pattern.to_owned());
+        }
+    }
+    Ok(patterns)
 }
 
 fn project_not_found(id: String, project_id: &str) -> String {
