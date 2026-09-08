@@ -1,6 +1,6 @@
 use crate::api::schema::{
     EventData, EventEnvelope, EventKind, ProjectCreateParams, ProjectInfo, ProjectOpenParams,
-    ProjectRenameParams, ProjectTarget, ResponseResult,
+    ProjectRenameParams, ProjectTarget, ProjectUpdateParams, ResponseResult,
 };
 use crate::app::App;
 
@@ -172,14 +172,39 @@ impl App {
         id: String,
         params: ProjectRenameParams,
     ) -> String {
-        let name = params.name.trim();
+        self.update_project(id, params.project_id, params.name, None, None)
+    }
+
+    pub(super) fn handle_project_update(
+        &mut self,
+        id: String,
+        params: ProjectUpdateParams,
+    ) -> String {
+        self.update_project(
+            id,
+            params.project_id,
+            params.name,
+            Some(params.root_path),
+            params.worktree_root,
+        )
+    }
+
+    fn update_project(
+        &mut self,
+        id: String,
+        project_id: String,
+        name: String,
+        root_path_param: Option<String>,
+        worktree_root_param: Option<String>,
+    ) -> String {
+        let name = name.trim();
         if name.is_empty() {
             return encode_error(id, "invalid_params", "project name must not be empty");
         }
-        let Some(existing) = self.state.projects.find(&params.project_id).cloned() else {
-            return project_not_found(id, &params.project_id);
+        let Some(existing) = self.state.projects.find(&project_id).cloned() else {
+            return project_not_found(id, &project_id);
         };
-        let root_path = match params.root_path.as_deref() {
+        let root_path = match root_path_param.as_deref() {
             Some(path) => match crate::project::normalize_root_path(path) {
                 Ok(path) => path,
                 Err(message) => return encode_error(id, "invalid_params", message),
@@ -190,7 +215,7 @@ impl App {
             .state
             .projects
             .find_by_root(&root_path)
-            .is_some_and(|project| project.id != params.project_id)
+            .is_some_and(|project| project.id != project_id)
         {
             return encode_error(
                 id,
@@ -198,7 +223,7 @@ impl App {
                 "another project already uses that path",
             );
         }
-        let worktree_root = match params.worktree_root.as_deref() {
+        let worktree_root = match worktree_root_param.as_deref() {
             Some(path) if path.trim().is_empty() => None,
             Some(path) => match crate::project::normalize_worktree_root(path) {
                 Ok(path) => Some(path),
@@ -207,8 +232,8 @@ impl App {
             None => existing.worktree_root.clone(),
         };
         let previous = self.state.projects.clone();
-        let Some(project) = self.state.projects.find_mut(&params.project_id) else {
-            return project_not_found(id, &params.project_id);
+        let Some(project) = self.state.projects.find_mut(&project_id) else {
+            return project_not_found(id, &project_id);
         };
         let old_root_path = project.root_path.clone();
         project.name = name.to_owned();
@@ -218,8 +243,8 @@ impl App {
             self.state.projects = previous;
             return encode_error(id, "project_save_failed", err.to_string());
         }
-        let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
-            return project_not_found(id, &params.project_id);
+        let Some(project) = self.state.projects.find(&project_id).cloned() else {
+            return project_not_found(id, &project_id);
         };
         if let Some(index) = self.state.workspaces.iter().position(|workspace| {
             crate::project::same_path(&workspace.identity_cwd, &old_root_path)

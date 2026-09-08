@@ -131,8 +131,6 @@ fn project_rename(args: &[String]) -> std::io::Result<i32> {
     super::runtime::project_rename(ProjectRenameParams {
         project_id: args[0].clone(),
         name: args[1..].join(" "),
-        root_path: None,
-        worktree_root: None,
     })
 }
 

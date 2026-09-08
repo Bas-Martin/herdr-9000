@@ -25,8 +25,13 @@ pub struct ProjectTarget {
 pub struct ProjectRenameParams {
     pub project_id: String,
     pub name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub root_path: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct ProjectUpdateParams {
+    pub project_id: String,
+    pub name: String,
+    pub root_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_root: Option<String>,
 }

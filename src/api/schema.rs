@@ -103,6 +103,8 @@ pub enum Method {
     ProjectOpen(ProjectOpenParams),
     #[serde(rename = "project.rename")]
     ProjectRename(ProjectRenameParams),
+    #[serde(rename = "project.update")]
+    ProjectUpdate(ProjectUpdateParams),
     #[serde(rename = "project.delete")]
     ProjectDelete(ProjectTarget),
     #[serde(rename = "worktree.list")]

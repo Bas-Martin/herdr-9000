@@ -29,9 +29,6 @@ pub use self::{
     tab::{NewPane, Tab},
 };
 
-#[cfg(test)]
-pub use self::git::derive_label_from_cwd;
-
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WorktreeSpaceMembership {
     pub key: String,

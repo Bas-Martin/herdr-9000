@@ -39,6 +39,7 @@ const CLIENT_SHELL_METHODS: &[&str] = &[
     "project.list",
     "project.open",
     "project.rename",
+    "project.update",
     "release_notes.dismiss",
     "server.reload_config",
     "tab.close",

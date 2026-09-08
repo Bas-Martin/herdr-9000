@@ -433,10 +433,12 @@ fn mobile_switcher_create_and_menu_rows_reuse_client_actions() {
     state.handle_raw_events(vec![click(new_workspace)]);
     assert!(matches!(
         state.overlay,
-        Some(ClientShellOverlay::Rename(ClientRenameOverlay {
-            target: ClientRenameTarget::NewWorkspace { .. },
-            ..
-        }))
+        Some(ClientShellOverlay::ProjectCreate(
+            ClientProjectCreateOverlay {
+                project_id: None,
+                ..
+            }
+        ))
     ));
     state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
         KeyCode::Esc,
@@ -521,7 +523,15 @@ fn mobile_menu_keeps_inert_notes_open_and_cancel_without_workspace_in_navigate()
         row: new_workspace.y,
         modifiers: KeyModifiers::empty(),
     })]);
-    assert!(matches!(state.overlay, Some(ClientShellOverlay::Rename(_))));
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::ProjectCreate(
+            ClientProjectCreateOverlay {
+                project_id: None,
+                ..
+            }
+        ))
+    ));
     state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
         KeyCode::Esc,
         KeyModifiers::empty(),

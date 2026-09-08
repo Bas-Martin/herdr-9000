@@ -832,37 +832,27 @@ fn desktop_workspace_navigation_reveals_overflowing_selection() {
 }
 
 #[test]
-fn named_workspace_overlay_targets_projected_source_workspace() {
-    let mut config = Config::default();
-    config.ui.prompt_new_workspace_name = true;
-    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+fn new_workspace_overlay_starts_with_empty_name_and_repository_default() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
     let mut open = ClientShellInput::default();
     state.record_binding(
         crate::input::KeybindMatch::Action(crate::input::KeybindAction::NewWorkspace),
         &mut open,
     );
-    assert!(matches!(
-        state.overlay.as_ref(),
-        Some(ClientShellOverlay::Rename(ClientRenameOverlay {
-            input: value,
-            target: ClientRenameTarget::NewWorkspace {
-                source_workspace_id,
-                ..
-            },
-            ..
-        })) if value == "repo" && source_workspace_id.as_deref() == Some("ws_1")
-    ));
-    let create = state.handle_input_bytes(b"\r");
-    let [ClientShellAction::Endpoint { request, .. }] = &create.actions[..] else {
-        panic!("named workspace should use endpoint API");
+    let expected_root = if cfg!(windows) {
+        "C:\\Repository\\"
+    } else {
+        ""
     };
     assert!(matches!(
-        &request.method,
-        crate::api::schema::Method::WorkspaceCreate(params)
-            if params.source_workspace_id.as_deref() == Some("ws_1")
-                && params.cwd.as_deref() == Some("/repo")
-                && params.label.is_none()
+        state.overlay.as_ref(),
+        Some(ClientShellOverlay::ProjectCreate(ClientProjectCreateOverlay {
+            project_id: None,
+            name,
+            root_path,
+            ..
+        })) if name.is_empty() && root_path == expected_root
     ));
 }
 

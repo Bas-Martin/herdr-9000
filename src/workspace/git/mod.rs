@@ -15,6 +15,3 @@ pub use self::{
         git_status_snapshot_for_cwd_with_demand, GitStatusCacheEntry, GitStatusRefreshDemand,
     },
 };
-
-#[cfg(test)]
-pub use self::discovery::derive_label_from_cwd;

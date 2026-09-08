@@ -764,10 +764,15 @@ fn render_project_settings_overlay(
     button(b, *edit, " e edit ", button_style);
     button(b, *rename, " r rename ", button_style);
     button(b, *cancel, " esc close ", button_style);
+    let (primary, project_edit, project_rename) = if v.project.is_some() {
+        (*rename, *edit, *rename)
+    } else {
+        (Rect::default(), Rect::default(), Rect::default())
+    };
     Some(OverlayRender {
-        primary: v.project.is_some().then_some(*rename).unwrap_or_default(),
-        project_edit: v.project.is_some().then_some(*edit).unwrap_or_default(),
-        project_rename: v.project.is_some().then_some(*rename).unwrap_or_default(),
+        primary,
+        project_edit,
+        project_rename,
         cancel: *cancel,
         ..OverlayRender::default()
     })

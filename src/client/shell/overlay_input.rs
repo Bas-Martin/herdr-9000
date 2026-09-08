@@ -648,10 +648,10 @@ impl ClientShellState {
         let worktree_root = project.worktree_root.trim().to_owned();
         let editing = project_id.is_some();
         let method = if let Some(project_id) = project_id {
-            crate::api::schema::Method::ProjectRename(crate::api::schema::ProjectRenameParams {
+            crate::api::schema::Method::ProjectUpdate(crate::api::schema::ProjectUpdateParams {
                 project_id,
                 name,
-                root_path: Some(root_path),
+                root_path,
                 worktree_root: Some(worktree_root),
             })
         } else {
@@ -1267,8 +1267,6 @@ impl ClientShellState {
                 crate::api::schema::Method::ProjectRename(crate::api::schema::ProjectRenameParams {
                     project_id,
                     name: trimmed.to_owned(),
-                    root_path: None,
-                    worktree_root: None,
                 })
             }),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {

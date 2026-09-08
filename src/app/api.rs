@@ -1023,6 +1023,9 @@ impl App {
             Method::ProjectRename(params) => {
                 return self.handle_project_rename(request.id, params);
             }
+            Method::ProjectUpdate(params) => {
+                return self.handle_project_update(request.id, params);
+            }
             Method::ProjectDelete(target) => {
                 return self.handle_project_delete(request.id, target);
             }
