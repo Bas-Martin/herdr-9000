@@ -1627,6 +1627,9 @@ impl ClientShellState {
             } else if super::contains(self.hits.project_rename, point) {
                 self.open_project_rename_overlay();
                 outcome.repaint = true;
+            } else if super::contains(self.hits.project_base, point) {
+                self.open_project_base_overlay();
+                outcome.repaint = true;
             } else if super::contains(self.hits.overlay_primary, point) {
                 match self.overlay.as_ref() {
                     Some(ClientShellOverlay::Rename(_)) => self.save_rename_overlay(outcome),

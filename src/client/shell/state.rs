@@ -175,6 +175,7 @@ pub(super) struct ShellHitMap {
     pub(super) overlay_clear: Rect,
     pub(super) project_edit: Rect,
     pub(super) project_rename: Rect,
+    pub(super) project_base: Rect,
     pub(super) project_name: Rect,
     pub(super) project_root: Rect,
     pub(super) project_worktree_root: Rect,
@@ -356,6 +357,12 @@ pub(super) enum ClientRenameTarget {
     Project {
         project_id: String,
     },
+    ProjectBase {
+        project_id: String,
+        name: String,
+        root_path: String,
+        worktree_root: Option<String>,
+    },
     Workspace {
         workspace_id: String,
     },
@@ -485,8 +492,10 @@ pub(super) struct ClientSettingsOverlay {
 #[derive(Debug)]
 pub(super) struct ClientWorktreeCreateOverlay {
     pub(super) source_workspace_id: String,
+    pub(super) project_id: Option<String>,
     pub(super) repo_name: String,
     pub(super) branch: String,
+    pub(super) worktree_directory: String,
     pub(super) checkout_path: String,
     pub(super) replace_on_type: bool,
     pub(super) error: Option<String>,

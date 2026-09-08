@@ -249,46 +249,50 @@ impl ClientShellState {
     }
 
     pub(super) fn sync_worktree_create_path(&mut self) {
-        let Some(worktree_directory) = self.endpoint_worktree_directory() else {
-            return;
-        };
         let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
             return;
         };
-        create.checkout_path =
-            checkout_path_preview(&worktree_directory, &create.repo_name, &create.branch);
+        create.checkout_path = checkout_path_preview(
+            &create.worktree_directory,
+            &create.repo_name,
+            &create.branch,
+        );
         create.error = None;
     }
 
     pub(super) fn submit_worktree_create(&mut self, outcome: &mut ClientShellInput) {
-        let Some(worktree_directory) = self.endpoint_worktree_directory() else {
-            return;
+        let (workspace_id, project_id, branch) = {
+            let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
+                return;
+            };
+            if create.creating {
+                return;
+            }
+            let branch = create.branch.trim().to_owned();
+            if branch.is_empty() || branch == "feat/" {
+                create.error = Some("branch name is required after feat/".to_owned());
+                outcome.repaint = true;
+                return;
+            }
+            create.branch = branch.clone();
+            create.replace_on_type = false;
+            create.checkout_path =
+                checkout_path_preview(&create.worktree_directory, &create.repo_name, &branch);
+            create.creating = true;
+            create.error = None;
+            (
+                create.source_workspace_id.clone(),
+                create.project_id.clone(),
+                branch,
+            )
         };
-        let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
-            return;
-        };
-        if create.creating {
-            return;
-        }
-        let branch = create.branch.trim().to_owned();
-        if branch.is_empty() {
-            create.error = Some("branch is required".to_owned());
-            outcome.repaint = true;
-            return;
-        }
-        create.branch = branch.clone();
-        create.replace_on_type = false;
-        create.checkout_path =
-            checkout_path_preview(&worktree_directory, &create.repo_name, &branch);
-        create.creating = true;
-        create.error = None;
-        let workspace_id = create.source_workspace_id.clone();
         if !self.push_endpoint_method_with_kind(
             crate::api::schema::Method::WorktreeCreate(crate::api::schema::WorktreeCreateParams {
+                project_id,
                 workspace_id: Some(workspace_id),
                 cwd: None,
                 branch: Some(branch),
-                base: Some("HEAD".to_owned()),
+                base: None,
                 path: None,
                 label: None,
                 focus: true,
@@ -398,12 +402,19 @@ impl ClientShellState {
                 PendingEndpointKind::PrepareWorktreeCreate { workspace_id },
                 Ok(ResponseResult::WorktreeList { source, .. }),
             ) => {
-                let seed = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|duration| duration.as_micros().min(u128::from(u64::MAX)) as u64)
-                    .unwrap_or(0);
-                let branch = crate::worktree::generated_branch_slug(seed);
-                let Some(worktree_directory) = self.endpoint_worktree_directory() else {
+                let Some(project_id) = source.project_id.clone() else {
+                    self.endpoint_error = Some(
+                        "Register this repository as a project before creating a worktree."
+                            .to_owned(),
+                    );
+                    return true;
+                };
+                let branch = "feat/".to_owned();
+                let Some(worktree_directory) = source
+                    .worktree_root
+                    .clone()
+                    .or_else(|| self.endpoint_worktree_directory())
+                else {
                     return false;
                 };
                 let checkout_path =
@@ -411,10 +422,12 @@ impl ClientShellState {
                 self.overlay = Some(ClientShellOverlay::WorktreeCreate(
                     ClientWorktreeCreateOverlay {
                         source_workspace_id: workspace_id,
+                        project_id: Some(project_id),
                         repo_name: source.repo_name,
                         branch,
+                        worktree_directory,
                         checkout_path,
-                        replace_on_type: true,
+                        replace_on_type: false,
                         error: None,
                         creating: false,
                     },

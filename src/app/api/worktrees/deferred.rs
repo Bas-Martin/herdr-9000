@@ -115,7 +115,6 @@ impl App {
             );
             return;
         }
-        let base = params.base.unwrap_or_else(|| "HEAD".into());
         let source = match self.resolve_worktree_source(params.workspace_id, params.cwd) {
             Ok(source) => source,
             Err(err) => {
@@ -123,6 +122,46 @@ impl App {
                 return;
             }
         };
+        let project_settings = match params.project_id.as_deref() {
+            None => None,
+            Some(project_id) => {
+                let Some(project) = self.state.projects.find(project_id) else {
+                    Self::send_api_response(
+                        respond_to,
+                        encode_error(
+                            id,
+                            "project_not_found",
+                            format!("project {project_id} not found"),
+                        ),
+                    );
+                    return;
+                };
+                if !crate::project::same_path(&project.root_path, &source.source_repo_root) {
+                    Self::send_api_response(
+                        respond_to,
+                        encode_error(
+                            id,
+                            "project_path_mismatch",
+                            "project does not match the worktree source repository",
+                        ),
+                    );
+                    return;
+                }
+                Some((project.worktree_root.clone(), project.worktree_base.clone()))
+            }
+        };
+        let base = params.base.unwrap_or_else(|| {
+            project_settings
+                .as_ref()
+                .and_then(|(_, base)| base.clone())
+                .unwrap_or_else(|| {
+                    if params.project_id.is_some() {
+                        crate::project::DEFAULT_WORKTREE_BASE.to_owned()
+                    } else {
+                        "HEAD".to_owned()
+                    }
+                })
+        });
         let checkout_path = match params.path {
             Some(path) => match absolute_user_path(&path) {
                 Ok(path) => path,
@@ -132,11 +171,15 @@ impl App {
                 }
             },
             None => {
-                let root = self
-                    .state
-                    .projects
-                    .find_by_root(&source.source_repo_root)
-                    .and_then(|project| project.worktree_root.as_deref())
+                let root = project_settings
+                    .as_ref()
+                    .and_then(|(root, _)| root.as_deref())
+                    .or_else(|| {
+                        self.state
+                            .projects
+                            .find_by_root(&source.source_repo_root)
+                            .and_then(|project| project.worktree_root.as_deref())
+                    })
                     .unwrap_or(&self.state.worktree_directory);
                 crate::worktree::default_checkout_path(root, &source.repo_name, &branch)
             }

@@ -8,6 +8,7 @@ pub(crate) struct OverlayRender {
     pub(crate) primary: Rect,
     pub(crate) project_edit: Rect,
     pub(crate) project_rename: Rect,
+    pub(crate) project_base: Rect,
     pub(crate) project_name: Rect,
     pub(crate) project_root: Rect,
     pub(crate) project_worktree_root: Rect,
@@ -685,7 +686,7 @@ fn render_project_settings_overlay(
     v: &ClientProjectSettingsOverlay,
     p: &Palette,
 ) -> Option<OverlayRender> {
-    let q = popup(b.area, 72, 12)?;
+    let q = popup(b.area, 72, 13)?;
     let i = panel(b, q, p.accent, p.panel_bg)?;
     let title = Style::default()
         .fg(p.text)
@@ -743,7 +744,21 @@ fn render_project_settings_overlay(
             i.x,
             i.y.saturating_add(5),
             i.width,
-            "e edit   r rename   o open   d delete",
+            &format!(
+                "base: {}",
+                project
+                    .worktree_base
+                    .as_deref()
+                    .unwrap_or(crate::project::DEFAULT_WORKTREE_BASE)
+            ),
+            Style::default().fg(p.text).bg(p.panel_bg),
+        );
+        put_text(
+            b,
+            i.x,
+            i.y.saturating_add(6),
+            i.width,
+            "e edit   r rename   b base   o open   d delete",
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     } else {
@@ -756,23 +771,30 @@ fn render_project_settings_overlay(
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     }
-    let rs = row(i, &[10, 12, 12], 2, i.height.saturating_sub(2));
-    let [edit, rename, cancel] = rs.as_slice() else {
+    let rs = row(i, &[10, 12, 10, 12], 2, i.height.saturating_sub(2));
+    let [edit, rename, base, cancel] = rs.as_slice() else {
         return None;
     };
     let button_style = Style::default().fg(p.text).bg(p.surface0);
     button(b, *edit, " e edit ", button_style);
     button(b, *rename, " r rename ", button_style);
+    button(b, *base, " b base ", button_style);
     button(b, *cancel, " esc close ", button_style);
-    let (primary, project_edit, project_rename) = if v.project.is_some() {
-        (*rename, *edit, *rename)
+    let (primary, project_edit, project_rename, project_base) = if v.project.is_some() {
+        (*rename, *edit, *rename, *base)
     } else {
-        (Rect::default(), Rect::default(), Rect::default())
+        (
+            Rect::default(),
+            Rect::default(),
+            Rect::default(),
+            Rect::default(),
+        )
     };
     Some(OverlayRender {
         primary,
         project_edit,
         project_rename,
+        project_base,
         cancel: *cancel,
         ..OverlayRender::default()
     })

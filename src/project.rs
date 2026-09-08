@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_PROJECT_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) const DEFAULT_WORKTREE_BASE: &str = "origin/main";
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Project {
@@ -10,6 +11,8 @@ pub(crate) struct Project {
     pub(crate) root_path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) worktree_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) worktree_base: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -66,6 +69,7 @@ impl Project {
             name,
             root_path,
             worktree_root,
+            worktree_base: None,
         }
     }
 }

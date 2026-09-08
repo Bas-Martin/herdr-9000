@@ -3923,6 +3923,12 @@
             "root_path": {
               "type": "string"
             },
+            "worktree_base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "worktree_root": {
               "type": [
                 "string",
@@ -3987,6 +3993,12 @@
             },
             "root_path": {
               "type": "string"
+            },
+            "worktree_base": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "worktree_root": {
               "type": [
@@ -4872,6 +4884,12 @@
               ]
             },
             "path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "project_id": {
               "type": [
                 "string",
                 "null"
@@ -9605,6 +9623,12 @@
                 "null"
               ]
             },
+            "worktree_base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "worktree_root": {
               "type": [
                 "string",
@@ -11606,6 +11630,12 @@
         },
         "WorktreeSourceInfo": {
           "properties": {
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "repo_key": {
               "type": "string"
             },
@@ -11619,6 +11649,12 @@
               "type": "string"
             },
             "source_workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "worktree_root": {
               "type": [
                 "string",
                 "null"

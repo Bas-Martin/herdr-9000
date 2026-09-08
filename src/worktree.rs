@@ -164,8 +164,12 @@ fn repository_git_args(repo_root: &Path, trust_repository: bool) -> Vec<String> 
         args.push(format!("safe.directory={}", repo_root.display()));
     }
     args.push("-C".to_string());
-    args.push(repo_root.display().to_string());
+    args.push(git_path_arg(repo_root));
     args
+}
+
+fn git_path_arg(path: &Path) -> String {
+    crate::project::display_path(path).replace('\\', "/")
 }
 
 pub(crate) fn default_checkout_path(root: &Path, repo_name: &str, branch: &str) -> PathBuf {
@@ -183,7 +187,7 @@ pub(crate) fn build_worktree_remove_command(
     if force {
         args.push("--force".to_string());
     }
-    args.push(path.display().to_string());
+    args.push(git_path_arg(path));
 
     WorktreeCommand {
         program: "git".to_string(),
@@ -248,7 +252,7 @@ pub(crate) fn build_worktree_add_new_branch_command(
         "add".to_string(),
         "-b".to_string(),
         branch.to_string(),
-        path.display().to_string(),
+        git_path_arg(path),
         base.to_string(),
     ]);
     WorktreeCommand {
@@ -267,7 +271,7 @@ pub(crate) fn build_worktree_add_existing_branch_command(
     args.extend([
         "worktree".to_string(),
         "add".to_string(),
-        path.display().to_string(),
+        git_path_arg(path),
         branch.to_string(),
     ]);
     WorktreeCommand {
