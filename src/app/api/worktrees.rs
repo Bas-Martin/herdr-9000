@@ -545,11 +545,17 @@ impl App {
         WorktreeSourceInfo {
             repo_key: source.repo_key.clone(),
             repo_name: source.repo_name.clone(),
-            repo_root: source.source_repo_root.display().to_string(),
-            source_checkout_path: source.source_checkout_path.display().to_string(),
+            repo_root: crate::project::display_path(&source.source_repo_root),
+            source_checkout_path: crate::project::display_path(&source.source_checkout_path),
             source_workspace_id: source
                 .workspace_idx
                 .map(|idx| self.public_workspace_id(idx)),
+            worktree_root: self
+                .state
+                .projects
+                .find_by_root(&source.source_repo_root)
+                .and_then(|project| project.worktree_root.as_deref())
+                .map(crate::project::display_path),
         }
     }
 

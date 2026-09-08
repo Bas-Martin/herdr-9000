@@ -123,6 +123,22 @@ impl App {
                 return;
             }
         };
+        if self
+            .state
+            .projects
+            .find_by_root(&source.source_repo_root)
+            .is_none()
+        {
+            Self::send_api_response(
+                respond_to,
+                encode_error(
+                    id,
+                    "project_not_registered",
+                    "register this repository as a project before creating a worktree",
+                ),
+            );
+            return;
+        }
         let checkout_path = match params.path {
             Some(path) => match absolute_user_path(&path) {
                 Ok(path) => path,

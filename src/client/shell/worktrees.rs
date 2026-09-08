@@ -249,21 +249,18 @@ impl ClientShellState {
     }
 
     pub(super) fn sync_worktree_create_path(&mut self) {
-        let Some(worktree_directory) = self.endpoint_worktree_directory() else {
-            return;
-        };
         let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
             return;
         };
-        create.checkout_path =
-            checkout_path_preview(&worktree_directory, &create.repo_name, &create.branch);
+        create.checkout_path = checkout_path_preview(
+            &create.worktree_directory,
+            &create.repo_name,
+            &create.branch,
+        );
         create.error = None;
     }
 
     pub(super) fn submit_worktree_create(&mut self, outcome: &mut ClientShellInput) {
-        let Some(worktree_directory) = self.endpoint_worktree_directory() else {
-            return;
-        };
         let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
             return;
         };
@@ -279,7 +276,7 @@ impl ClientShellState {
         create.branch = branch.clone();
         create.replace_on_type = false;
         create.checkout_path =
-            checkout_path_preview(&worktree_directory, &create.repo_name, &branch);
+            checkout_path_preview(&create.worktree_directory, &create.repo_name, &branch);
         create.creating = true;
         create.error = None;
         let workspace_id = create.source_workspace_id.clone();
@@ -403,7 +400,11 @@ impl ClientShellState {
                     .map(|duration| duration.as_micros().min(u128::from(u64::MAX)) as u64)
                     .unwrap_or(0);
                 let branch = crate::worktree::generated_branch_slug(seed);
-                let Some(worktree_directory) = self.endpoint_worktree_directory() else {
+                let Some(worktree_directory) = source
+                    .worktree_root
+                    .clone()
+                    .or_else(|| self.endpoint_worktree_directory())
+                else {
                     return false;
                 };
                 let checkout_path =
@@ -413,6 +414,7 @@ impl ClientShellState {
                         source_workspace_id: workspace_id,
                         repo_name: source.repo_name,
                         branch,
+                        worktree_directory,
                         checkout_path,
                         replace_on_type: true,
                         error: None,

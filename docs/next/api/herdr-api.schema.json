@@ -11156,6 +11156,12 @@
                 "string",
                 "null"
               ]
+            },
+            "worktree_root": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [

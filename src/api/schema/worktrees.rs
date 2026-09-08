@@ -65,6 +65,8 @@ pub struct WorktreeSourceInfo {
     pub source_checkout_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_workspace_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_root: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

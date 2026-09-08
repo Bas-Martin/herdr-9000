@@ -487,6 +487,7 @@ pub(super) struct ClientWorktreeCreateOverlay {
     pub(super) source_workspace_id: String,
     pub(super) repo_name: String,
     pub(super) branch: String,
+    pub(super) worktree_directory: String,
     pub(super) checkout_path: String,
     pub(super) replace_on_type: bool,
     pub(super) error: Option<String>,
