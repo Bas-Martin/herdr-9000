@@ -154,13 +154,13 @@ impl App {
             project_settings
                 .as_ref()
                 .and_then(|(_, base)| base.clone())
-                .or_else(|| {
-                    self.state
-                        .projects
-                        .find_by_root(&source.source_repo_root)
-                        .and_then(|project| project.worktree_base.clone())
+                .unwrap_or_else(|| {
+                    if params.project_id.is_some() {
+                        crate::project::DEFAULT_WORKTREE_BASE.to_owned()
+                    } else {
+                        "HEAD".to_owned()
+                    }
                 })
-                .unwrap_or_else(|| crate::project::DEFAULT_WORKTREE_BASE.to_owned())
         });
         let checkout_path = match params.path {
             Some(path) => match absolute_user_path(&path) {
