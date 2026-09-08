@@ -110,10 +110,30 @@ impl App {
     }
 
     pub(super) fn handle_task_open(&mut self, id: String, params: TaskOpenParams) -> String {
-        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+        let Some(mut task) = self.state.tasks.find(&params.task_id).cloned() else {
             return task_not_found(id, &params.task_id);
         };
-        let runtime = self.task_runtime_info(&task);
+        let mut runtime = self.task_runtime_info(&task);
+        if !runtime.available {
+            if let Some(target_runtime) = self.open_task_target(&task, params.focus) {
+                runtime = target_runtime;
+                task.workspace_id = runtime.workspace_id.clone();
+                task.tab_id = runtime.tab_id.clone();
+                task.pane_id = runtime.pane_id.clone();
+                task.updated_at = crate::task::current_unix_ms();
+                let previous = self.state.tasks.clone();
+                if let Some(stored) = self.state.tasks.find_mut(&task.id) {
+                    stored.workspace_id = task.workspace_id.clone();
+                    stored.tab_id = task.tab_id.clone();
+                    stored.pane_id = task.pane_id.clone();
+                    stored.updated_at = task.updated_at;
+                }
+                if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                    self.state.tasks = previous;
+                    return encode_error(id, "task_save_failed", err.to_string());
+                }
+            }
+        }
         if params.focus && runtime.available {
             self.focus_task_runtime(&runtime);
         }
@@ -176,6 +196,36 @@ impl App {
                 task: self.task_info(task),
             },
         )
+    }
+
+    fn open_task_target(&mut self, task: &Task, focus: bool) -> Option<TaskRuntimeInfo> {
+        let target_path = match task.location {
+            TaskLocationMode::Repository => self
+                .state
+                .projects
+                .find(&task.project_id)
+                .map(|project| project.root_path.clone()),
+            TaskLocationMode::Worktree => task.worktree_path.clone(),
+        }?;
+        if !target_path.is_dir() {
+            return None;
+        }
+        let workspace_index = self
+            .state
+            .workspaces
+            .iter()
+            .position(|workspace| crate::project::same_path(&workspace.identity_cwd, &target_path))
+            .or_else(|| self.create_workspace_with_options(target_path, focus).ok())?;
+        let workspace = self.state.workspaces.get(workspace_index)?;
+        let tab_index = workspace.active_tab_index();
+        let pane = workspace.focused_pane_id()?;
+        Some(TaskRuntimeInfo {
+            available: true,
+            workspace_id: Some(self.public_workspace_id(workspace_index)),
+            tab_id: self.public_tab_id(workspace_index, tab_index),
+            pane_id: self.public_pane_id(workspace_index, pane),
+            message: None,
+        })
     }
 
     fn task_info(&self, task: &Task) -> TaskInfo {
