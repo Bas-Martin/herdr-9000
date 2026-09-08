@@ -115,7 +115,6 @@ pub(crate) fn display_path(path: &Path) -> String {
     }
     value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
 }
-
 pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
     let left = canonical_or_original(left);
     let right = canonical_or_original(right);
