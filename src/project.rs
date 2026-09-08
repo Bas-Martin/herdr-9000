@@ -13,6 +13,28 @@ pub(crate) struct Project {
     pub(crate) worktree_root: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) worktree_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) default_agent: Option<String>,
+}
+
+pub(crate) fn normalize_agent_provider(raw: &str) -> Result<String, String> {
+    let value = raw.trim();
+    let Some(agent) = crate::detect::parse_agent_label(value) else {
+        return Err(format!("unknown agent provider: {value}"));
+    };
+    let canonical = crate::detect::agent_label(agent);
+    let executable = crate::detect::interactive_agent_executable(agent);
+    let lookup_command = if cfg!(windows) { "where" } else { "which" };
+    let available = std::process::Command::new(lookup_command)
+        .arg(executable)
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !available {
+        return Err(format!(
+            "agent provider {canonical} is unavailable; executable {executable} was not found on PATH"
+        ));
+    }
+    Ok(canonical.to_owned())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -70,6 +92,7 @@ impl Project {
             root_path,
             worktree_root,
             worktree_base: None,
+            default_agent: None,
         }
     }
 }

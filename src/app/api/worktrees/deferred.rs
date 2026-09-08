@@ -558,13 +558,18 @@ impl App {
                 );
                 return;
             };
+            let provider = self
+                .state
+                .projects
+                .find(&project_id)
+                .and_then(|project| project.default_agent.clone());
             let task = crate::task::Task::new(
                 project_id,
                 task_name,
                 crate::task::TaskLocationMode::Worktree,
                 worktree.branch.clone(),
                 Some(result.path.clone()),
-                None,
+                provider,
                 None,
                 None,
                 Some(self.public_workspace_id(ws_idx)),

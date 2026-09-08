@@ -26,6 +26,7 @@ impl App {
                 .as_ref()
                 .map(|path| crate::project::display_path(path)),
             worktree_base: project.worktree_base.clone(),
+            default_agent: project.default_agent.clone(),
         }
     }
 
@@ -88,9 +89,14 @@ impl App {
                 format!("project already exists: {}", existing.id),
             );
         }
+        let default_agent = match normalize_default_agent(params.default_agent) {
+            Ok(agent) => agent,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
         let previous = self.state.projects.clone();
         let worktree_base = clean_worktree_base(params.worktree_base);
         let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
+        project.default_agent = default_agent;
         project.worktree_base = worktree_base;
         self.state.projects.insert(project.clone());
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
@@ -174,7 +180,7 @@ impl App {
         id: String,
         params: ProjectRenameParams,
     ) -> String {
-        self.update_project(id, params.project_id, params.name, None, None, None)
+        self.update_project(id, params.project_id, params.name, None, None, None, None)
     }
     pub(super) fn handle_project_update(
         &mut self,
@@ -188,9 +194,9 @@ impl App {
             Some(params.root_path),
             params.worktree_root,
             params.worktree_base,
+            params.default_agent,
         )
     }
-
     fn update_project(
         &mut self,
         id: String,
@@ -199,6 +205,7 @@ impl App {
         root_path_param: Option<String>,
         worktree_root_param: Option<String>,
         worktree_base_param: Option<String>,
+        default_agent_param: Option<String>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -238,10 +245,18 @@ impl App {
             Some(base) => clean_worktree_base(Some(base)),
             None => existing.worktree_base.clone(),
         };
+        let default_agent = match default_agent_param {
+            Some(agent) => match normalize_default_agent(Some(agent)) {
+                Ok(agent) => agent,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => existing.default_agent.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
         };
+        project.default_agent = default_agent;
         let old_root_path = project.root_path.clone();
         project.name = name.to_owned();
         project.root_path = root_path;
@@ -305,6 +320,13 @@ fn clean_worktree_base(value: Option<String>) -> Option<String> {
         let value = value.trim().to_owned();
         (!value.is_empty()).then_some(value)
     })
+}
+
+fn normalize_default_agent(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = clean_worktree_base(value) else {
+        return Ok(None);
+    };
+    crate::project::normalize_agent_provider(&value).map(Some)
 }
 
 fn project_not_found(id: String, project_id: &str) -> String {

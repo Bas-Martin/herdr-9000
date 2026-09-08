@@ -16,6 +16,8 @@ pub struct ProjectCreateParams {
     pub worktree_root: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -38,6 +40,8 @@ pub struct ProjectUpdateParams {
     pub worktree_root: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_agent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -58,4 +62,6 @@ pub struct ProjectInfo {
     pub worktree_root: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_agent: Option<String>,
 }

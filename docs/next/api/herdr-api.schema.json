@@ -3909,6 +3909,12 @@
         },
         "ProjectCreateParams": {
           "properties": {
+            "default_agent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "focus": {
               "default": true,
               "type": "boolean"
@@ -3985,6 +3991,12 @@
         },
         "ProjectUpdateParams": {
           "properties": {
+            "default_agent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "name": {
               "type": "string"
             },
@@ -9614,6 +9626,12 @@
         },
         "ProjectInfo": {
           "properties": {
+            "default_agent": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "name": {
               "type": "string"
             },

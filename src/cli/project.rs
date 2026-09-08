@@ -89,6 +89,7 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
         focus: open && focus,
         worktree_root: None,
         worktree_base: None,
+        default_agent: None,
     })
 }
 

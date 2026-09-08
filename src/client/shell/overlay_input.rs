@@ -409,6 +409,25 @@ impl ClientShellState {
             },
         }));
     }
+    pub(super) fn open_project_default_agent_overlay(&mut self) {
+        let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
+            _ => None,
+        }) else {
+            return;
+        };
+        self.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
+            title: "default agent",
+            input: project.default_agent.unwrap_or_default(),
+            replace_on_type: false,
+            target: ClientRenameTarget::ProjectDefaultAgent {
+                project_id: project.project_id,
+                name: project.name,
+                root_path: project.root_path,
+                worktree_root: project.worktree_root,
+            },
+        }));
+    }
 
     pub(super) fn open_project_edit_overlay(&mut self) {
         let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
@@ -676,6 +695,7 @@ impl ClientShellState {
                 root_path,
                 worktree_root: Some(worktree_root),
                 worktree_base: None,
+                default_agent: None,
             })
         } else {
             crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
@@ -685,6 +705,7 @@ impl ClientShellState {
                 focus: true,
                 worktree_root: (!worktree_root.is_empty()).then_some(worktree_root),
                 worktree_base: None,
+                default_agent: None,
             })
         };
         project.submitting = true;
@@ -1172,6 +1193,9 @@ impl ClientShellState {
                 KeyCode::Esc => self.overlay = None,
                 KeyCode::Char('e') | KeyCode::Char('E') => self.open_project_edit_overlay(),
                 KeyCode::Char('b') | KeyCode::Char('B') => self.open_project_base_overlay(),
+                KeyCode::Char('a') | KeyCode::Char('A') => {
+                    self.open_project_default_agent_overlay()
+                }
                 KeyCode::Enter | KeyCode::Char('r') | KeyCode::Char('R') => {
                     self.open_project_rename_overlay()
                 }
@@ -1306,6 +1330,22 @@ impl ClientShellState {
                     root_path,
                     worktree_root,
                     worktree_base: Some(trimmed.to_owned()),
+                    default_agent: None,
+                },
+            )),
+            ClientRenameTarget::ProjectDefaultAgent {
+                project_id,
+                name,
+                root_path,
+                worktree_root,
+            } => Some(crate::api::schema::Method::ProjectUpdate(
+                crate::api::schema::ProjectUpdateParams {
+                    project_id,
+                    name,
+                    root_path,
+                    worktree_root,
+                    worktree_base: None,
+                    default_agent: Some(trimmed.to_owned()),
                 },
             )),
             ClientRenameTarget::Workspace { workspace_id } => (!trimmed.is_empty()).then(|| {

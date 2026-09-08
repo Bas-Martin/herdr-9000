@@ -568,6 +568,7 @@ impl ClientShellState {
                 self.hits.project_edit = rendered.project_edit;
                 self.hits.project_rename = rendered.project_rename;
                 self.hits.project_base = rendered.project_base;
+                self.hits.project_agent = rendered.project_agent;
                 self.hits.project_name = rendered.project_name;
                 self.hits.project_root = rendered.project_root;
                 self.hits.project_worktree_root = rendered.project_worktree_root;

@@ -16,6 +16,11 @@ impl App {
         if self.state.projects.find(&params.project_id).is_none() {
             return project_not_found(id, &params.project_id);
         }
+        let project_default_agent = self
+            .state
+            .projects
+            .find(&params.project_id)
+            .and_then(|project| project.default_agent.clone());
         let worktree_path = match params.location {
             TaskLocationMode::Repository => {
                 if params
@@ -59,6 +64,13 @@ impl App {
                 Some(path)
             }
         };
+        let provider = match clean_optional(params.provider).or(project_default_agent) {
+            Some(provider) => match crate::project::normalize_agent_provider(&provider) {
+                Ok(provider) => Some(provider),
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => None,
+        };
         let previous = self.state.tasks.clone();
         let task = Task::new(
             params.project_id,
@@ -66,7 +78,7 @@ impl App {
             params.location,
             clean_optional(params.branch),
             worktree_path,
-            clean_optional(params.provider),
+            provider,
             clean_optional(params.model),
             params.prompt.filter(|prompt| !prompt.is_empty()),
             clean_optional(params.workspace_id),
