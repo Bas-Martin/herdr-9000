@@ -1026,6 +1026,7 @@ impl AppState {
             pane_id_aliases: std::collections::HashMap::new(),
             public_pane_id_aliases: std::collections::HashMap::new(),
             workspaces: Vec::new(),
+            projects: crate::project::ProjectRegistry::default(),
             active: None,
             previous_pane_focus: None,
             selected: 0,

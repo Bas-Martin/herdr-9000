@@ -1590,13 +1590,50 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::ProjectCreate(_))) {
+            if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+                return;
+            }
+            if super::contains(self.hits.overlay_cancel, point) {
+                self.overlay = None;
+            } else if super::contains(self.hits.project_name, point) {
+                if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                    project.field = ClientProjectCreateField::Name;
+                    project.error = None;
+                }
+            } else if super::contains(self.hits.project_root, point) {
+                if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                    project.field = ClientProjectCreateField::RootPath;
+                    project.error = None;
+                }
+            } else if super::contains(self.hits.project_worktree_root, point) {
+                if let Some(ClientShellOverlay::ProjectCreate(project)) = self.overlay.as_mut() {
+                    project.field = ClientProjectCreateField::WorktreeRoot;
+                    project.error = None;
+                }
+            } else if super::contains(self.hits.overlay_primary, point) {
+                self.submit_project_create(outcome);
+            }
+            outcome.repaint = true;
+            return;
+        }
         if self.overlay.is_some() {
             if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
                 return;
             }
-            if super::contains(self.hits.overlay_primary, point) {
+            if super::contains(self.hits.project_edit, point) {
+                self.open_project_edit_overlay();
+                outcome.repaint = true;
+            } else if super::contains(self.hits.project_rename, point) {
+                self.open_project_rename_overlay();
+                outcome.repaint = true;
+            } else if super::contains(self.hits.overlay_primary, point) {
                 match self.overlay.as_ref() {
                     Some(ClientShellOverlay::Rename(_)) => self.save_rename_overlay(outcome),
+                    Some(ClientShellOverlay::ProjectSettings(_)) => {
+                        self.open_project_rename_overlay();
+                        outcome.repaint = true;
+                    }
                     Some(ClientShellOverlay::ConfirmClose(_)) => {
                         let Some(ClientShellOverlay::ConfirmClose(confirm)) = self.overlay.take()
                         else {

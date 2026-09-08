@@ -419,6 +419,7 @@ pub(crate) fn api_method_name(method: &Method) -> &'static str {
         Method::ProjectGet(_) => "project.get",
         Method::ProjectOpen(_) => "project.open",
         Method::ProjectRename(_) => "project.rename",
+        Method::ProjectUpdate(_) => "project.update",
         Method::ProjectDelete(_) => "project.delete",
         Method::TabFocus(_) => "tab.focus",
         Method::TabRename(_) => "tab.rename",

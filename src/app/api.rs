@@ -7,8 +7,8 @@ mod integrations;
 mod layouts;
 mod pane_graphics;
 mod panes;
-mod projects;
 pub(crate) mod plugins;
+mod projects;
 pub(super) mod responses;
 mod session;
 mod tabs;
@@ -1022,6 +1022,9 @@ impl App {
             }
             Method::ProjectRename(params) => {
                 return self.handle_project_rename(request.id, params);
+            }
+            Method::ProjectUpdate(params) => {
+                return self.handle_project_update(request.id, params);
             }
             Method::ProjectDelete(target) => {
                 return self.handle_project_delete(request.id, target);

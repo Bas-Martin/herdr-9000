@@ -367,28 +367,24 @@ pub(crate) fn render_sidebar(
 
     let footer_y = workspace_area.bottom().saturating_sub(1);
     if config.mouse_capture {
+        let attention = super::super::global_menu::global_menu_attention(snapshot);
+        let launcher_width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let launcher_x = workspace_area.right().saturating_sub(launcher_width);
         hits.new_workspace = Rect::new(
             workspace_area.x,
             footer_y,
-            5.min(workspace_area.width),
+            5.min(launcher_x.saturating_sub(workspace_area.x)),
             u16::from(workspace_area.height > 0),
         );
         put_text(
             buffer,
             workspace_area.x,
             footer_y,
-            workspace_area.width,
+            5.min(launcher_x.saturating_sub(workspace_area.x)),
             " new",
             Style::default().fg(palette.overlay0),
         );
-        let attention = super::super::global_menu::global_menu_attention(snapshot);
-        let launcher_width = if attention { 8 } else { 6 }.min(workspace_area.width);
-        hits.global_launcher = Rect::new(
-            workspace_area.right().saturating_sub(launcher_width),
-            footer_y,
-            launcher_width,
-            1,
-        );
+        hits.global_launcher = Rect::new(launcher_x, footer_y, launcher_width, 1);
         if attention {
             let start_x = workspace_area.right().saturating_sub(6);
             put_text(

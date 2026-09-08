@@ -338,29 +338,27 @@ pub(super) fn render_expanded(
 
     let footer_y = workspace_area.bottom().saturating_sub(1);
     if config.mouse_capture {
-        let label = format!(" new · {}", active_endpoint_label(state));
+        let attention = active_snapshot.is_some_and(super::global_menu::global_menu_attention);
+        let menu_width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let menu_x = workspace_area.right().saturating_sub(menu_width);
+        let workspace_label = " + workspace";
+        let workspace_width =
+            display_width(workspace_label).min(menu_x.saturating_sub(workspace_area.x));
         hits.new_workspace = Rect::new(
             workspace_area.x,
             footer_y,
-            display_width(&label).min(workspace_area.width),
+            workspace_width,
             u16::from(workspace_area.height > 0),
         );
         put_text(
             buffer,
             workspace_area.x,
             footer_y,
-            workspace_area.width,
-            &label,
+            workspace_width,
+            workspace_label,
             Style::default().fg(palette.overlay0),
         );
-        let attention = active_snapshot.is_some_and(super::global_menu::global_menu_attention);
-        let width = if attention { 8 } else { 6 }.min(workspace_area.width);
-        hits.global_launcher = Rect::new(
-            workspace_area.right().saturating_sub(width),
-            footer_y,
-            width,
-            1,
-        );
+        hits.global_launcher = Rect::new(menu_x, footer_y, menu_width, 1);
         put_right_text(
             buffer,
             workspace_area,
@@ -397,14 +395,6 @@ pub(super) fn render_expanded(
         "«",
         Style::default().fg(palette.overlay0),
     );
-}
-
-fn active_endpoint_label<'a>(state: &'a ShellRenderState<'_>) -> &'a str {
-    state
-        .endpoints
-        .iter()
-        .find(|endpoint| &endpoint.endpoint_id == state.active_endpoint_id)
-        .map_or("Local", |endpoint| endpoint.label.as_str())
 }
 
 fn render_endpoint_row(

@@ -38,6 +38,7 @@ pub(crate) fn request_changes_ui(request: &Request) -> bool {
             | Method::ProjectCreate(_)
             | Method::ProjectOpen(_)
             | Method::ProjectRename(_)
+            | Method::ProjectUpdate(_)
             | Method::ProjectDelete(_)
             | Method::WorktreeCreate(_)
             | Method::WorktreeOpen(_)

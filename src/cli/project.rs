@@ -37,6 +37,8 @@ fn project_list(args: &[String]) -> std::io::Result<i32> {
 fn project_create(args: &[String]) -> std::io::Result<i32> {
     let mut name = None;
     let mut root_path = None;
+    let mut open = false;
+    let mut focus = true;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -56,6 +58,18 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
                 root_path = Some(value.clone());
                 index += 2;
             }
+            "--open" => {
+                open = true;
+                index += 1;
+            }
+            "--focus" => {
+                focus = true;
+                index += 1;
+            }
+            "--no-focus" => {
+                focus = false;
+                index += 1;
+            }
             other => {
                 eprintln!("unknown option: {other}");
                 return Ok(2);
@@ -63,10 +77,18 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
         }
     }
     let (Some(name), Some(root_path)) = (name, root_path) else {
-        eprintln!("usage: herdr project create --name NAME --path PATH");
+        eprintln!(
+            "usage: herdr project create --name NAME --path PATH [--open] [--focus|--no-focus]"
+        );
         return Ok(2);
     };
-    super::runtime::project_create(ProjectCreateParams { name, root_path })
+    super::runtime::project_create(ProjectCreateParams {
+        name,
+        root_path,
+        open,
+        focus: open && focus,
+        worktree_root: None,
+    })
 }
 
 fn project_get(args: &[String]) -> std::io::Result<i32> {
@@ -127,7 +149,7 @@ fn print_project_help() {
     println!();
     println!("usage: herdr project <subcommand>");
     println!("  list");
-    println!("  create --name NAME --path PATH");
+    println!("  create --name NAME --path PATH [--open] [--focus|--no-focus]");
     println!("  get <project_id>");
     println!("  open <project_id> [--focus|--no-focus]");
     println!("  rename <project_id> <name>");

@@ -3907,6 +3907,101 @@
           ],
           "type": "object"
         },
+        "ProjectCreateParams": {
+          "properties": {
+            "focus": {
+              "default": true,
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "open": {
+              "default": false,
+              "type": "boolean"
+            },
+            "root_path": {
+              "type": "string"
+            },
+            "worktree_root": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "root_path"
+          ],
+          "type": "object"
+        },
+        "ProjectOpenParams": {
+          "properties": {
+            "focus": {
+              "default": true,
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "project_id"
+          ],
+          "type": "object"
+        },
+        "ProjectRenameParams": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "project_id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "ProjectTarget": {
+          "properties": {
+            "project_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "project_id"
+          ],
+          "type": "object"
+        },
+        "ProjectUpdateParams": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "root_path": {
+              "type": "string"
+            },
+            "worktree_root": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "project_id",
+            "name",
+            "root_path"
+          ],
+          "type": "object"
+        },
         "ReadFormat": {
           "enum": [
             "text",
@@ -5107,6 +5202,118 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/WorkspaceCloseParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/EmptyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.get",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.open",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectOpenParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.rename",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectRenameParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.update",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectUpdateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "project.delete",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ProjectTarget"
             }
           },
           "required": [
@@ -9171,6 +9378,37 @@
             }
           ]
         },
+        "ProjectInfo": {
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "root_path": {
+              "type": "string"
+            },
+            "workspace_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "worktree_root": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "project_id",
+            "name",
+            "root_path"
+          ],
+          "type": "object"
+        },
         "ReadFormat": {
           "enum": [
             "text",
@@ -9294,6 +9532,97 @@
               "required": [
                 "type",
                 "workspaces"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "project": {
+                  "$ref": "#/schemas/success_response/$defs/ProjectInfo"
+                },
+                "type": {
+                  "const": "project_info",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "project"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "project": {
+                  "$ref": "#/schemas/success_response/$defs/ProjectInfo"
+                },
+                "type": {
+                  "const": "project_created",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "project"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "projects": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/ProjectInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "project_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "projects"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "created": {
+                  "type": "boolean"
+                },
+                "project": {
+                  "$ref": "#/schemas/success_response/$defs/ProjectInfo"
+                },
+                "type": {
+                  "const": "project_opened",
+                  "type": "string"
+                },
+                "workspace": {
+                  "$ref": "#/schemas/success_response/$defs/WorkspaceInfo"
+                }
+              },
+              "required": [
+                "type",
+                "project",
+                "workspace",
+                "created"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "project_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "project_deleted",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "project_id"
               ],
               "type": "object"
             },

@@ -8,6 +8,8 @@ pub(crate) struct Project {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) root_path: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) worktree_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -57,12 +59,13 @@ impl ProjectRegistry {
 }
 
 impl Project {
-    pub(crate) fn new(name: String, root_path: PathBuf) -> Self {
+    pub(crate) fn new(name: String, root_path: PathBuf, worktree_root: Option<PathBuf>) -> Self {
         let id = format!("p{}", NEXT_PROJECT_ID.fetch_add(1, Ordering::Relaxed));
         Self {
             id,
             name,
             root_path,
+            worktree_root,
         }
     }
 }
@@ -92,6 +95,26 @@ pub(crate) fn normalize_root_path(raw_path: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+pub(crate) fn normalize_worktree_root(raw_path: &str) -> Result<PathBuf, String> {
+    if raw_path.trim().is_empty() {
+        return Err("worktree root path must not be empty".into());
+    }
+
+    let path = std::fs::canonicalize(raw_path)
+        .map_err(|err| format!("worktree root path is not accessible: {err}"))?;
+    if !path.is_dir() {
+        return Err("worktree root path must be a directory".into());
+    }
+    Ok(path)
+}
+
+pub(crate) fn display_path(path: &Path) -> String {
+    let value = path.display().to_string();
+    if let Some(path) = value.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{path}");
+    }
+    value.strip_prefix(r"\\?\").unwrap_or(&value).to_owned()
+}
 pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
     let left = canonical_or_original(left);
     let right = canonical_or_original(right);

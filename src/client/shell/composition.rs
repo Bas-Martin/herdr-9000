@@ -565,6 +565,11 @@ impl ClientShellState {
                     &self.config.palette,
                 )?;
                 self.hits.overlay_primary = rendered.primary;
+                self.hits.project_edit = rendered.project_edit;
+                self.hits.project_rename = rendered.project_rename;
+                self.hits.project_name = rendered.project_name;
+                self.hits.project_root = rendered.project_root;
+                self.hits.project_worktree_root = rendered.project_worktree_root;
                 self.hits.overlay_clear = rendered.clear;
                 self.hits.overlay_cancel = rendered.cancel;
                 self.hits.navigator_popup = rendered.navigator_popup;

@@ -18,14 +18,21 @@ fn shell_new_controls_use_the_same_client_action_routes_as_keybinds() {
             row: new_workspace.y,
             modifiers: KeyModifiers::empty(),
         })]);
-    let [ClientShellAction::Endpoint { request, .. }] = &create_workspace.actions[..] else {
-        panic!("new workspace click should use the endpoint API");
-    };
+    assert!(create_workspace.actions.is_empty());
     assert!(matches!(
-        request.method,
-        crate::api::schema::Method::WorkspaceCreate(_)
+        state.overlay,
+        Some(ClientShellOverlay::ProjectCreate(
+            ClientProjectCreateOverlay {
+                project_id: None,
+                ..
+            }
+        ))
     ));
 
+    state.handle_raw_events(vec![RawInputEvent::Key(crate::input::TerminalKey::new(
+        KeyCode::Esc,
+        KeyModifiers::empty(),
+    ))]);
     let new_tab = state.hits.new_tab;
     let open_new_tab =
         state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
