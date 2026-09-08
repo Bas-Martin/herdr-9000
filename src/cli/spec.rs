@@ -40,6 +40,7 @@ pub(super) fn command() -> Command {
         .subcommand(worktree_command())
         .subcommand(tab_command())
         .subcommand(notification_command())
+        .subcommand(project_command())
         .subcommand(agent_command())
         .subcommand(pane_command())
         .subcommand(terminal_command())
@@ -186,6 +187,37 @@ fn api_command() -> Command {
                 .arg(json_flag())
                 .arg(path_option("output", "PATH")),
         )
+}
+
+fn project_command() -> Command {
+    Command::new("project")
+        .about("Manage persistent project registrations")
+        .subcommand(Command::new("list").about("List projects"))
+        .subcommand(
+            Command::new("create")
+                .about("Register a project")
+                .arg(option("name", "NAME").required(true))
+                .arg(path_option("path", "PATH").required(true)),
+        )
+        .subcommand(id_command("get", "project_id", "Show a project"))
+        .subcommand(
+            Command::new("open")
+                .about("Open a project's workspace")
+                .arg(required("project_id", "PROJECT_ID"))
+                .arg(flag("focus"))
+                .arg(flag("no-focus")),
+        )
+        .subcommand(
+            Command::new("rename")
+                .about("Rename a project")
+                .arg(required("project_id", "PROJECT_ID"))
+                .arg(required("name", "NAME").num_args(1..)),
+        )
+        .subcommand(id_command(
+            "delete",
+            "project_id",
+            "Delete a project registration",
+        ))
 }
 
 fn workspace_command() -> Command {

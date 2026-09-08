@@ -40,6 +40,7 @@ mod plugin_command;
 mod plugin_paths;
 mod popup_size;
 mod product_announcements;
+mod project;
 mod protocol;
 mod pty;
 mod raw_input;
@@ -595,6 +596,7 @@ fn main() -> io::Result<()> {
         println!("       herdr config <subcommand> ...");
         println!("       herdr channel <subcommand> ...");
         println!("       herdr workspace <subcommand> ...");
+        println!("       herdr project <subcommand> ...");
         println!("       herdr worktree <subcommand> ...");
         println!("       herdr tab <subcommand> ...");
         println!("       herdr notification <subcommand> ...");
@@ -640,6 +642,10 @@ fn main() -> io::Result<()> {
             (
                 "herdr workspace <subcommand>",
                 "Workspace helpers over the socket API",
+            ),
+            (
+                "herdr project <subcommand>",
+                "Persistent project registration helpers",
             ),
             (
                 "herdr worktree <subcommand>",
@@ -740,6 +746,7 @@ fn main() -> io::Result<()> {
                 "config",
                 "channel",
                 "machine",
+                "project",
                 "workspace",
                 "worktree",
                 "pane",

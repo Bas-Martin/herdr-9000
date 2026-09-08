@@ -30,6 +30,7 @@ mod machine;
 mod notification;
 mod pane;
 mod plugin;
+mod project;
 mod protocol_guard;
 mod runtime;
 mod server;
@@ -103,6 +104,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
     }
 
     let exit_code = match command {
+        "project" => project::run_project_command(&args[2..])?,
         "server" => {
             let Some(exit_code) = server::run_server_command(&args[2..])? else {
                 return Ok(CommandOutcome::NotCli);

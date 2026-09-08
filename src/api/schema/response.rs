@@ -15,6 +15,7 @@ use super::plugins::{
     InstalledPluginInfo, PluginActionInfo, PluginCommandLogInfo, PluginInvocationContext,
     PluginPaneInfo,
 };
+use super::projects::ProjectInfo;
 use super::server::ServerCapabilities;
 use super::session::SessionSnapshot;
 use super::tabs::TabInfo;
@@ -61,6 +62,23 @@ pub enum ResponseResult {
     },
     WorkspaceList {
         workspaces: Vec<WorkspaceInfo>,
+    },
+    ProjectInfo {
+        project: ProjectInfo,
+    },
+    ProjectCreated {
+        project: ProjectInfo,
+    },
+    ProjectList {
+        projects: Vec<ProjectInfo>,
+    },
+    ProjectOpened {
+        project: ProjectInfo,
+        workspace: WorkspaceInfo,
+        created: bool,
+    },
+    ProjectDeleted {
+        project_id: String,
     },
     WorktreeList {
         source: WorktreeSourceInfo,

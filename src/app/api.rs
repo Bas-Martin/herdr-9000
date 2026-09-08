@@ -7,6 +7,7 @@ mod integrations;
 mod layouts;
 mod pane_graphics;
 mod panes;
+mod projects;
 pub(crate) mod plugins;
 pub(super) mod responses;
 mod session;
@@ -1010,6 +1011,20 @@ impl App {
             }
             Method::WorkspaceClose(target) => {
                 return self.handle_workspace_close(request.id, target)
+            }
+            Method::ProjectCreate(params) => {
+                return self.handle_project_create(request.id, params);
+            }
+            Method::ProjectList(_) => return self.handle_project_list(request.id),
+            Method::ProjectGet(target) => return self.handle_project_get(request.id, target),
+            Method::ProjectOpen(params) => {
+                return self.handle_project_open(request.id, params);
+            }
+            Method::ProjectRename(params) => {
+                return self.handle_project_rename(request.id, params);
+            }
+            Method::ProjectDelete(target) => {
+                return self.handle_project_delete(request.id, target);
             }
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {

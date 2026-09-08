@@ -405,6 +405,8 @@ impl App {
             (Vec::new(), None, 0)
         };
 
+        let projects = crate::persist::load_projects();
+
         let agent_panel_sort = agent_panel_sort_from_config(config.ui.agent_panel_sort);
 
         let worktree_directory =
@@ -447,6 +449,7 @@ impl App {
             public_pane_id_aliases: std::collections::HashMap::new(),
             workspaces,
             active,
+            projects,
             previous_pane_focus: None,
             selected,
             mode,

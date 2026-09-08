@@ -1,9 +1,10 @@
 use crate::api::schema::{
     EmptyParams, Method, PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams,
     PaneRenameParams, PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget,
-    PaneZoomParams, Request, TabCreateParams, TabListParams, TabRenameParams, TabTarget,
-    WorkspaceCloseParams, WorkspaceCreateParams, WorkspaceRenameParams, WorkspaceTarget,
-    WorktreeCreateParams, WorktreeListParams, WorktreeOpenParams, WorktreeRemoveParams,
+    PaneZoomParams, ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget,
+    Request, TabCreateParams, TabListParams, TabRenameParams, TabTarget, WorkspaceCloseParams,
+    WorkspaceCreateParams, WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams,
+    WorktreeListParams, WorktreeOpenParams, WorktreeRemoveParams,
 };
 
 fn print_method_response(id: &'static str, method: Method) -> std::io::Result<i32> {
@@ -44,6 +45,33 @@ pub(super) fn workspace_rename(params: WorkspaceRenameParams) -> std::io::Result
 
 pub(super) fn workspace_close(params: WorkspaceCloseParams) -> std::io::Result<i32> {
     print_method_response("cli:workspace:close", Method::WorkspaceClose(params))
+}
+
+pub(super) fn project_list() -> std::io::Result<i32> {
+    print_method_response(
+        "cli:project:list",
+        Method::ProjectList(EmptyParams::default()),
+    )
+}
+
+pub(super) fn project_create(params: ProjectCreateParams) -> std::io::Result<i32> {
+    print_method_response("cli:project:create", Method::ProjectCreate(params))
+}
+
+pub(super) fn project_get(target: ProjectTarget) -> std::io::Result<i32> {
+    print_method_response("cli:project:get", Method::ProjectGet(target))
+}
+
+pub(super) fn project_open(params: ProjectOpenParams) -> std::io::Result<i32> {
+    print_method_response("cli:project:open", Method::ProjectOpen(params))
+}
+
+pub(super) fn project_rename(params: ProjectRenameParams) -> std::io::Result<i32> {
+    print_method_response("cli:project:rename", Method::ProjectRename(params))
+}
+
+pub(super) fn project_delete(target: ProjectTarget) -> std::io::Result<i32> {
+    print_method_response("cli:project:delete", Method::ProjectDelete(target))
 }
 
 pub(super) fn tab_list(params: TabListParams) -> std::io::Result<i32> {

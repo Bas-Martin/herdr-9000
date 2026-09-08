@@ -7,6 +7,7 @@ pub mod events;
 pub mod integrations;
 pub mod panes;
 pub mod plugins;
+pub mod projects;
 pub mod response;
 pub mod server;
 pub mod session;
@@ -21,6 +22,7 @@ pub use events::*;
 pub use integrations::*;
 pub use panes::*;
 pub use plugins::*;
+pub use projects::*;
 pub use response::*;
 pub use server::*;
 pub use session::*;
@@ -91,6 +93,18 @@ pub enum Method {
     WorkspaceReportMetadata(WorkspaceReportMetadataParams),
     #[serde(rename = "workspace.close")]
     WorkspaceClose(WorkspaceCloseParams),
+    #[serde(rename = "project.create")]
+    ProjectCreate(ProjectCreateParams),
+    #[serde(rename = "project.list")]
+    ProjectList(EmptyParams),
+    #[serde(rename = "project.get")]
+    ProjectGet(ProjectTarget),
+    #[serde(rename = "project.open")]
+    ProjectOpen(ProjectOpenParams),
+    #[serde(rename = "project.rename")]
+    ProjectRename(ProjectRenameParams),
+    #[serde(rename = "project.delete")]
+    ProjectDelete(ProjectTarget),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]
