@@ -261,6 +261,21 @@ fn task_command() -> Command {
                 .arg(required("name", "NAME").num_args(1..)),
         )
         .subcommand(id_command("close", "task_id", "Close a task"))
+        .subcommand(
+            Command::new("diff")
+                .about("Show task changes")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(option("base", "REF"))
+                .arg(flag("split"))
+                .arg(flag("unified")),
+        )
+        .subcommand(
+            Command::new("write")
+                .about("Write a task workspace file")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(path_option("path", "PATH").required(true))
+                .arg(option("content", "TEXT").required(true)),
+        )
 }
 
 fn workspace_command() -> Command {

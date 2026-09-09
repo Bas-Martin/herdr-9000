@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::agents::AgentInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
+use super::diffs::{TaskDiffInfo, TaskFileWrittenInfo};
 use super::events::EventEnvelope;
 use super::integrations::{
     IntegrationInstallResult, IntegrationTarget, IntegrationUninstallResult,
@@ -100,6 +101,12 @@ pub enum ResponseResult {
     },
     TaskClosed {
         task: TaskInfo,
+    },
+    TaskDiff {
+        diff: TaskDiffInfo,
+    },
+    TaskFileWritten {
+        file: TaskFileWrittenInfo,
     },
     WorktreeList {
         source: WorktreeSourceInfo,

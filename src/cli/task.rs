@@ -1,8 +1,10 @@
+use std::collections::BTreeMap;
+
 use crate::api::schema::{
-    TaskCreateParams, TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget,
+    DiffView, TaskCreateParams, TaskDiffParams, TaskFileWriteParams, TaskListParams,
+    TaskOpenParams, TaskRenameParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
-use std::collections::BTreeMap;
 
 pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
     let Some(subcommand) = args.first().map(String::as_str) else {
@@ -16,6 +18,8 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "open" => task_open(&args[1..]),
         "rename" => task_rename(&args[1..]),
         "close" => task_close(&args[1..]),
+        "diff" => task_diff(&args[1..]),
+        "write" => task_write(&args[1..]),
         "help" | "--help" | "-h" => {
             print_task_help();
             Ok(0)
@@ -244,6 +248,84 @@ fn task_close(args: &[String]) -> std::io::Result<i32> {
         task_id: args[0].clone(),
     })
 }
+fn task_diff(args: &[String]) -> std::io::Result<i32> {
+    let Some(task_id) = args.first() else {
+        eprintln!("usage: herdr task diff <task_id> [--base REF] [--split|--unified]");
+        return Ok(2);
+    };
+    let mut base = None;
+    let mut view = DiffView::Unified;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--base" => {
+                let Some(value) = option_value(args, index, "--base") else {
+                    return Ok(2);
+                };
+                base = Some(value);
+                index += 2;
+            }
+            "--split" => {
+                view = DiffView::Split;
+                index += 1;
+            }
+            "--unified" => {
+                view = DiffView::Unified;
+                index += 1;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+    super::runtime::task_diff(TaskDiffParams {
+        task_id: task_id.clone(),
+        base,
+        view,
+    })
+}
+
+fn task_write(args: &[String]) -> std::io::Result<i32> {
+    let Some(task_id) = args.first() else {
+        eprintln!("usage: herdr task write <task_id> --path PATH --content TEXT");
+        return Ok(2);
+    };
+    let mut path = None;
+    let mut content = None;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--path" => {
+                path = option_value(args, index, "--path");
+                if path.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            "--content" => {
+                content = option_value(args, index, "--content");
+                if content.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+    let (Some(path), Some(content)) = (path, content) else {
+        eprintln!("usage: herdr task write <task_id> --path PATH --content TEXT");
+        return Ok(2);
+    };
+    super::runtime::task_file_write(TaskFileWriteParams {
+        task_id: task_id.clone(),
+        path,
+        content,
+    })
+}
 
 fn print_task_help() {
     println!("herdr task — manage durable agent tasks");
@@ -254,4 +336,6 @@ fn print_task_help() {
     println!("  open <task_id> [--focus|--no-focus]");
     println!("  rename <task_id> <name>");
     println!("  close <task_id>");
+    println!("  diff <task_id> [--base REF] [--split|--unified]");
+    println!("  write <task_id> --path PATH --content TEXT");
 }

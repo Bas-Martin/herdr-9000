@@ -568,6 +568,152 @@ impl App {
             },
         )
     }
+    pub(super) fn handle_task_diff(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskDiffParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        if !worktree_path.is_dir() {
+            return encode_error(
+                id,
+                "task_workspace_missing",
+                "task workspace is no longer available",
+            );
+        }
+        let base = params.base.unwrap_or_else(|| "HEAD".to_owned());
+        if base.is_empty() || base.starts_with('-') || base.chars().any(char::is_control) {
+            return encode_error(
+                id,
+                "invalid_params",
+                "diff base must be a valid Git revision",
+            );
+        }
+        let status = match run_task_git(
+            &worktree_path,
+            &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        ) {
+            Ok(status) => status,
+            Err(message) => return encode_error(id, "task_diff_failed", message),
+        };
+        let files = parse_task_diff_status(&status);
+        let patch = match run_task_git_with_base(&worktree_path, "diff", &base) {
+            Ok(patch) => patch,
+            Err(message) => return encode_error(id, "task_diff_failed", message),
+        };
+        let untracked = files
+            .iter()
+            .filter(|file| file.status == crate::api::schema::TaskDiffFileStatus::Untracked)
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        let mut patch = patch;
+        for path in untracked {
+            match untracked_file_patch(&worktree_path, &path) {
+                Ok(Some(file_patch)) => {
+                    if !patch.is_empty() && !patch.ends_with('\n') {
+                        patch.push('\n');
+                    }
+                    patch.push_str(&file_patch);
+                }
+                Ok(None) => {}
+                Err(message) => return encode_error(id, "task_diff_failed", message),
+            }
+        }
+        encode_success(
+            id,
+            ResponseResult::TaskDiff {
+                diff: crate::api::schema::TaskDiffInfo {
+                    task_id: task.id,
+                    project_id: task.project_id,
+                    worktree_path: crate::project::display_path(&worktree_path),
+                    view: params.view,
+                    files,
+                    patch,
+                    read_only: true,
+                    refreshed_at: crate::task::current_unix_ms(),
+                },
+            },
+        )
+    }
+
+    pub(super) fn handle_task_file_write(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskFileWriteParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        let Some(relative) = safe_task_relative_path(&params.path) else {
+            return encode_error(
+                id,
+                "invalid_params",
+                "file path must be repository-relative and outside .git",
+            );
+        };
+        let target = worktree_path.join(&relative);
+        let Some(parent) = target.parent() else {
+            return encode_error(id, "invalid_params", "file path has no parent directory");
+        };
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            return encode_error(
+                id,
+                "task_file_write_failed",
+                format!("parent directory could not be created: {err}"),
+            );
+        }
+        let canonical_root = match std::fs::canonicalize(&worktree_path) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(id, "task_workspace_missing", err.to_string());
+            }
+        };
+        let canonical_parent = match std::fs::canonicalize(parent) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "task_file_write_failed",
+                    format!("parent directory is not accessible: {err}"),
+                );
+            }
+        };
+        if !canonical_parent.starts_with(&canonical_root) {
+            return encode_error(id, "invalid_params", "file path escapes the task workspace");
+        }
+        if let Ok(metadata) = std::fs::symlink_metadata(&target) {
+            if metadata.file_type().is_symlink() {
+                return encode_error(id, "invalid_params", "symbolic-link files cannot be edited");
+            }
+        }
+        if let Err(err) = std::fs::write(&target, params.content.as_bytes()) {
+            return encode_error(id, "task_file_write_failed", err.to_string());
+        }
+        encode_success(
+            id,
+            ResponseResult::TaskFileWritten {
+                file: crate::api::schema::TaskFileWrittenInfo {
+                    task_id: task.id,
+                    path: relative.to_string_lossy().replace('\\', "/"),
+                    bytes: params.content.len() as u64,
+                },
+            },
+        )
+    }
 
     fn open_task_target(&mut self, task: &Task, focus: bool) -> Option<TaskRuntimeInfo> {
         let target_path = match task.location {
@@ -780,6 +926,115 @@ fn task_environment(
         environment.insert("HERDR_TASK_BRANCH".to_owned(), branch.to_owned());
     }
     environment
+}
+fn run_task_git(worktree_path: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let git_path = crate::project::display_path(worktree_path).replace('\\', "/");
+    let output = crate::noninteractive_process::command("git")
+        .args(["-C", &git_path])
+        .args(args)
+        .output()
+        .map_err(|err| format!("could not run git: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn run_task_git_with_base(
+    worktree_path: &std::path::Path,
+    command_name: &str,
+    base: &str,
+) -> Result<String, String> {
+    run_task_git(worktree_path, &[command_name, base, "--"])
+}
+
+fn parse_task_diff_status(status: &str) -> Vec<crate::api::schema::TaskDiffFile> {
+    let mut records = status.split('\0');
+    let mut files = Vec::new();
+    while let Some(record) = records.next() {
+        if record.len() < 4 {
+            continue;
+        }
+        let code = record.as_bytes();
+        let mut path = record[3..].to_owned();
+        let old_path = if code[0] == b'R' || code[1] == b'R' || code[0] == b'C' {
+            let old_path = path;
+            let Some(new_path) = records.next() else {
+                continue;
+            };
+            path = new_path.to_owned();
+            Some(old_path)
+        } else {
+            None
+        };
+        let status = match (code[0], code[1]) {
+            (b'?', b'?') => crate::api::schema::TaskDiffFileStatus::Untracked,
+            (b'U', _) | (_, b'U') | (b'A', b'A') | (b'D', b'D') => {
+                crate::api::schema::TaskDiffFileStatus::Conflicted
+            }
+            (b'R', _) | (_, b'R') => crate::api::schema::TaskDiffFileStatus::Renamed,
+            (b'C', _) | (_, b'C') => crate::api::schema::TaskDiffFileStatus::Copied,
+            (b'A', _) | (_, b'A') => crate::api::schema::TaskDiffFileStatus::Added,
+            (b'D', _) | (_, b'D') => crate::api::schema::TaskDiffFileStatus::Deleted,
+            _ => crate::api::schema::TaskDiffFileStatus::Modified,
+        };
+        files.push(crate::api::schema::TaskDiffFile {
+            path,
+            old_path,
+            status,
+            additions: 0,
+            deletions: 0,
+            conflict: matches!(status, crate::api::schema::TaskDiffFileStatus::Conflicted),
+        });
+    }
+    files
+}
+
+fn untracked_file_patch(
+    worktree_path: &std::path::Path,
+    relative: &str,
+) -> Result<Option<String>, String> {
+    let Some(path) = safe_task_relative_path(relative) else {
+        return Ok(None);
+    };
+    let bytes = std::fs::read(worktree_path.join(path))
+        .map_err(|err| format!("could not read untracked file {relative}: {err}"))?;
+    if bytes.contains(&0) {
+        return Ok(Some(format!(
+            "diff --git a/{relative} b/{relative}\nnew file mode 100644\nBinary files /dev/null and b/{relative} differ\n"
+        )));
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let line_count = text.lines().count().max(1);
+    let mut patch = format!(
+        "diff --git a/{relative} b/{relative}\nnew file mode 100644\n--- /dev/null\n+++ b/{relative}\n@@ -0,0 +1,{line_count} @@\n"
+    );
+    for line in text.lines() {
+        patch.push('+');
+        patch.push_str(line);
+        patch.push('\n');
+    }
+    Ok(Some(patch))
+}
+
+fn safe_task_relative_path(raw: &str) -> Option<std::path::PathBuf> {
+    let normalized = raw.trim().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.starts_with('/')
+        || normalized.contains(':')
+        || normalized.split('/').any(|component| {
+            component.is_empty() || component == "." || component == ".." || component == ".git"
+        })
+    {
+        return None;
+    }
+    Some(std::path::PathBuf::from(
+        normalized.replace('/', std::path::MAIN_SEPARATOR_STR),
+    ))
 }
 
 fn lifecycle_step_label(step: TaskLifecycleStep) -> &'static str {

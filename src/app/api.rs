@@ -1071,6 +1071,10 @@ impl App {
             Method::TaskOpen(params) => return self.handle_task_open(request.id, params),
             Method::TaskRename(params) => return self.handle_task_rename(request.id, params),
             Method::TaskClose(target) => return self.handle_task_close(request.id, target),
+            Method::TaskDiff(params) => return self.handle_task_diff(request.id, params),
+            Method::TaskFileWrite(params) => {
+                return self.handle_task_file_write(request.id, params)
+            }
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {
                 let _ = params;

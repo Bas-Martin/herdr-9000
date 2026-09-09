@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub mod agents;
 pub mod commands;
 pub mod common;
+pub mod diffs;
 pub mod events;
 pub mod integrations;
 pub mod panes;
@@ -19,6 +20,7 @@ pub mod worktrees;
 pub use agents::*;
 pub use commands::*;
 pub use common::*;
+pub use diffs::*;
 pub use events::*;
 pub use integrations::*;
 pub use panes::*;
@@ -119,6 +121,10 @@ pub enum Method {
     TaskRename(TaskRenameParams),
     #[serde(rename = "task.close")]
     TaskClose(TaskTarget),
+    #[serde(rename = "task.diff")]
+    TaskDiff(TaskDiffParams),
+    #[serde(rename = "task.file_write")]
+    TaskFileWrite(TaskFileWriteParams),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

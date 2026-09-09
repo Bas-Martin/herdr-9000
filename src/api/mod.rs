@@ -44,6 +44,7 @@ pub(crate) fn request_changes_ui(request: &Request) -> bool {
             | Method::TaskOpen(_)
             | Method::TaskRename(_)
             | Method::TaskClose(_)
+            | Method::TaskFileWrite(_)
             | Method::WorktreeCreate(_)
             | Method::WorktreeOpen(_)
             | Method::WorktreeRemove(_)

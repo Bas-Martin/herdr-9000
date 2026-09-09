@@ -426,6 +426,8 @@ pub(crate) fn api_method_name(method: &Method) -> &'static str {
         Method::TaskOpen(_) => "task.open",
         Method::TaskRename(_) => "task.rename",
         Method::TaskClose(_) => "task.close",
+        Method::TaskDiff(_) => "task.diff",
+        Method::TaskFileWrite(_) => "task.file_write",
         Method::TabFocus(_) => "tab.focus",
         Method::TabRename(_) => "tab.rename",
         Method::TabMove(_) => "tab.move",

@@ -1753,6 +1753,13 @@
           ],
           "type": "object"
         },
+        "DiffView": {
+          "enum": [
+            "unified",
+            "split"
+          ],
+          "type": "string"
+        },
         "EmptyParams": {
           "type": "object"
         },
@@ -4703,6 +4710,46 @@
           ],
           "type": "object"
         },
+        "TaskDiffParams": {
+          "properties": {
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "view": {
+              "$ref": "#/schemas/request/$defs/DiffView",
+              "default": "unified"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "type": "object"
+        },
+        "TaskFileWriteParams": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "path",
+            "content"
+          ],
+          "type": "object"
+        },
         "TaskListParams": {
           "properties": {
             "include_closed": {
@@ -5654,6 +5701,38 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/TaskTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.diff",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskDiffParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.file_write",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskFileWriteParams"
             }
           },
           "required": [
@@ -7393,6 +7472,13 @@
             "applied",
             "partial",
             "failed"
+          ],
+          "type": "string"
+        },
+        "DiffView": {
+          "enum": [
+            "unified",
+            "split"
           ],
           "type": "string"
         },
@@ -10130,6 +10216,38 @@
             },
             {
               "properties": {
+                "diff": {
+                  "$ref": "#/schemas/success_response/$defs/TaskDiffInfo"
+                },
+                "type": {
+                  "const": "task_diff",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "diff"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "file": {
+                  "$ref": "#/schemas/success_response/$defs/TaskFileWrittenInfo"
+                },
+                "type": {
+                  "const": "task_file_written",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "file"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "source": {
                   "$ref": "#/schemas/success_response/$defs/WorktreeSourceInfo"
                 },
@@ -11511,6 +11629,120 @@
             "focused",
             "pane_count",
             "agent_status"
+          ],
+          "type": "object"
+        },
+        "TaskDiffFile": {
+          "properties": {
+            "additions": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "conflict": {
+              "type": "boolean"
+            },
+            "deletions": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "old_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "path": {
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/TaskDiffFileStatus"
+            }
+          },
+          "required": [
+            "path",
+            "status",
+            "additions",
+            "deletions",
+            "conflict"
+          ],
+          "type": "object"
+        },
+        "TaskDiffFileStatus": {
+          "enum": [
+            "added",
+            "modified",
+            "deleted",
+            "renamed",
+            "copied",
+            "conflicted",
+            "untracked"
+          ],
+          "type": "string"
+        },
+        "TaskDiffInfo": {
+          "properties": {
+            "files": {
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/TaskDiffFile"
+              },
+              "type": "array"
+            },
+            "patch": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "read_only": {
+              "type": "boolean"
+            },
+            "refreshed_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "view": {
+              "$ref": "#/schemas/success_response/$defs/DiffView"
+            },
+            "worktree_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "project_id",
+            "worktree_path",
+            "view",
+            "files",
+            "patch",
+            "read_only",
+            "refreshed_at"
+          ],
+          "type": "object"
+        },
+        "TaskFileWrittenInfo": {
+          "properties": {
+            "bytes": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "path",
+            "bytes"
           ],
           "type": "object"
         },

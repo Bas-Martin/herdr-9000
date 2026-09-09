@@ -3,9 +3,10 @@ use crate::api::schema::{
     PaneRenameParams, PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget,
     PaneZoomParams, ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget,
     Request, TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskCreateParams,
-    TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget, WorkspaceCloseParams,
-    WorkspaceCreateParams, WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams,
-    WorktreeListParams, WorktreeOpenParams, WorktreeRemoveParams,
+    TaskDiffParams, TaskFileWriteParams, TaskListParams, TaskOpenParams, TaskRenameParams,
+    TaskTarget, WorkspaceCloseParams, WorkspaceCreateParams, WorkspaceRenameParams,
+    WorkspaceTarget, WorktreeCreateParams, WorktreeListParams, WorktreeOpenParams,
+    WorktreeRemoveParams,
 };
 
 fn print_method_response(id: &'static str, method: Method) -> std::io::Result<i32> {
@@ -93,6 +94,13 @@ pub(super) fn task_rename(params: TaskRenameParams) -> std::io::Result<i32> {
 
 pub(super) fn task_close(target: TaskTarget) -> std::io::Result<i32> {
     print_method_response("cli:task:close", Method::TaskClose(target))
+}
+pub(super) fn task_diff(params: TaskDiffParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:diff", Method::TaskDiff(params))
+}
+
+pub(super) fn task_file_write(params: TaskFileWriteParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:file-write", Method::TaskFileWrite(params))
 }
 
 pub(super) fn tab_list(params: TabListParams) -> std::io::Result<i32> {
