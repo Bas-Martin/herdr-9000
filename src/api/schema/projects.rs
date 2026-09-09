@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 fn default_true() -> bool {
     true
@@ -34,6 +35,8 @@ pub struct ProjectCreateParams {
     pub lifecycle: Option<ProjectLifecycle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preserve_patterns: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -62,6 +65,8 @@ pub struct ProjectUpdateParams {
     pub lifecycle: Option<ProjectLifecycle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preserve_patterns: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -88,4 +93,6 @@ pub struct ProjectInfo {
     pub lifecycle: ProjectLifecycle,
     #[serde(default)]
     pub preserve_patterns: Vec<String>,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
 }

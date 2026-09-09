@@ -627,6 +627,32 @@ pub(crate) fn interactive_shell_command(argv: &[String], shell_name: &str) -> Op
         Some(cmd_encoded_powershell_command(&script))
     }
 }
+pub(crate) fn interactive_shell_command_with_env(
+    argv: &[String],
+    shell_name: &str,
+    environment: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let command = interactive_shell_command(argv, shell_name)?;
+    if environment.is_empty() {
+        return Some(command);
+    }
+    let powershell = shell_name.to_ascii_lowercase();
+    if powershell.contains("powershell") || powershell.contains("pwsh") {
+        let prefix = environment
+            .iter()
+            .map(|(name, value)| format!("$env:{name} = {};", super::quote_powershell_arg(value)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        Some(format!("{prefix} {command}"))
+    } else {
+        let prefix = environment
+            .iter()
+            .map(|(name, value)| format!("set \"{name}={value}\""))
+            .collect::<Vec<_>>()
+            .join(" && ");
+        Some(format!("{prefix} && {command}"))
+    }
+}
 
 fn powershell_agent_script(argv: &[String]) -> Option<String> {
     let (program, args) = argv.split_first()?;

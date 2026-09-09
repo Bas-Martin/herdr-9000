@@ -152,6 +152,13 @@ pub(crate) fn pane_custom_command_pty_builder_platform(
 pub(crate) fn interactive_shell_command(_argv: &[String], _shell_name: &str) -> Option<String> {
     None
 }
+pub(crate) fn interactive_shell_command_with_env(
+    _argv: &[String],
+    _shell_name: &str,
+    _environment: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    None
+}
 
 /// Unsupported platform stub.
 pub(crate) fn scrollback_editor_argv(_path: &std::path::Path) -> std::io::Result<Vec<String>> {

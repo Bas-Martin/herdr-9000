@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -40,6 +41,8 @@ pub(crate) struct Project {
     pub(crate) preserve_patterns: Vec<String>,
     #[serde(default, skip_serializing_if = "ProjectLifecycle::is_empty")]
     pub(crate) lifecycle: ProjectLifecycle,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) environment: BTreeMap<String, String>,
 }
 pub(crate) fn normalize_agent_provider(raw: &str) -> Result<String, String> {
     let value = raw.trim();
@@ -119,6 +122,7 @@ impl Project {
             default_agent: None,
             preserve_patterns: Vec::new(),
             lifecycle: ProjectLifecycle::default(),
+            environment: BTreeMap::new(),
         }
     }
 }

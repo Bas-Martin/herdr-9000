@@ -3915,6 +3915,15 @@
                 "null"
               ]
             },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": [
+                "object",
+                "null"
+              ]
+            },
             "focus": {
               "default": true,
               "type": "boolean"
@@ -4042,6 +4051,15 @@
             "default_agent": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": [
+                "object",
                 "null"
               ]
             },
@@ -4614,6 +4632,15 @@
             "branch": {
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": [
+                "object",
                 "null"
               ]
             },
@@ -9699,6 +9726,13 @@
                 "null"
               ]
             },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
+            },
             "lifecycle": {
               "$ref": "#/schemas/success_response/$defs/ProjectLifecycle",
               "default": {}
@@ -11516,6 +11550,13 @@
               "format": "uint64",
               "minimum": 0,
               "type": "integer"
+            },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "type": "object"
             },
             "error": {
               "type": [

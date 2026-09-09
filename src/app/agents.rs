@@ -18,6 +18,22 @@ fn valid_agent_name(name: &str) -> bool {
         && name.len() <= 32
         && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_'))
 }
+fn valid_agent_environment(environment: &std::collections::BTreeMap<String, String>) -> bool {
+    environment.iter().all(|(name, value)| {
+        !name.is_empty()
+            && name.len() <= 128
+            && name
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            && name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            && value.len() <= 32768
+            && !value.chars().any(char::is_control)
+            && !value.contains('"')
+    })
+}
 
 impl App {
     pub(super) fn collect_agent_infos(&self) -> Vec<crate::api::schema::AgentInfo> {
@@ -146,6 +162,14 @@ impl App {
         &mut self,
         params: AgentStartParams,
     ) -> Result<(crate::api::schema::AgentInfo, Vec<String>), AgentStartError> {
+        self.start_agent_with_environment(params, &std::collections::BTreeMap::new())
+    }
+
+    pub(super) fn start_agent_with_environment(
+        &mut self,
+        params: AgentStartParams,
+        environment: &std::collections::BTreeMap<String, String>,
+    ) -> Result<(crate::api::schema::AgentInfo, Vec<String>), AgentStartError> {
         let name = params.name;
         if !valid_agent_name(&name) {
             return Err(AgentStartError::InvalidName);
@@ -158,6 +182,9 @@ impl App {
             .iter()
             .any(|arg| arg.chars().any(char::is_control))
         {
+            return Err(AgentStartError::InvalidArgument);
+        }
+        if !valid_agent_environment(environment) {
             return Err(AgentStartError::InvalidArgument);
         }
         let persisted_agent_session =
@@ -196,8 +223,9 @@ impl App {
 
         let mut argv = vec![crate::detect::interactive_agent_executable(kind).to_string()];
         argv.extend(params.args);
-        let command = crate::platform::interactive_shell_command(&argv, &shell_name)
-            .ok_or(AgentStartError::InvalidArgument)?;
+        let command =
+            crate::platform::interactive_shell_command_with_env(&argv, &shell_name, environment)
+                .ok_or(AgentStartError::InvalidArgument)?;
         let bytes = crate::app::api_helpers::encode_api_submission(runtime, &command);
         let timeout = Duration::from_millis(
             params

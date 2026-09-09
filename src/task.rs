@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -73,6 +74,8 @@ pub(crate) struct Task {
     pub(crate) provider: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) environment: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -136,6 +139,7 @@ impl Task {
         provider: Option<String>,
         model: Option<String>,
         prompt: Option<String>,
+        environment: BTreeMap<String, String>,
         workspace_id: Option<String>,
         tab_id: Option<String>,
         pane_id: Option<String>,
@@ -151,6 +155,7 @@ impl Task {
             provider,
             model,
             prompt,
+            environment,
             agent_command: None,
             error: None,
             agent_session: None,

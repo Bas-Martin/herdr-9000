@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::task::{TaskLifecycleStatus, TaskLifecycleStep, TaskLocationMode, TaskStatus};
 
@@ -18,6 +19,8 @@ pub struct TaskCreateParams {
     pub model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -87,6 +90,8 @@ pub struct TaskInfo {
     pub agent_session: Option<super::agents::AgentSessionInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default)]
+    pub environment: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lifecycle_runs: Vec<TaskLifecycleRunInfo>,
     pub status: TaskStatus,

@@ -1,6 +1,7 @@
 use crate::api::schema::{
     ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget,
 };
+use std::collections::BTreeMap;
 
 pub(super) fn run_project_command(args: &[String]) -> std::io::Result<i32> {
     let Some(subcommand) = args.first().map(|arg| arg.as_str()) else {
@@ -39,6 +40,7 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
     let mut root_path = None;
     let mut open = false;
     let mut focus = true;
+    let mut environment = BTreeMap::new();
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
@@ -56,6 +58,18 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
                     return Ok(2);
                 };
                 root_path = Some(value.clone());
+                index += 2;
+            }
+            "--env" => {
+                let Some(value) = args.get(index + 1) else {
+                    eprintln!("missing value for --env");
+                    return Ok(2);
+                };
+                let Some((name, value)) = value.split_once('=') else {
+                    eprintln!("environment must use NAME=VALUE");
+                    return Ok(2);
+                };
+                environment.insert(name.to_owned(), value.to_owned());
                 index += 2;
             }
             "--open" => {
@@ -92,6 +106,7 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
         default_agent: None,
         preserve_patterns: None,
         lifecycle: None,
+        environment: (!environment.is_empty()).then_some(environment),
     })
 }
 

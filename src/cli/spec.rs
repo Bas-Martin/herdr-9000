@@ -198,7 +198,8 @@ fn project_command() -> Command {
             Command::new("create")
                 .about("Register a project")
                 .arg(option("name", "NAME").required(true))
-                .arg(path_option("path", "PATH").required(true)),
+                .arg(path_option("path", "PATH").required(true))
+                .arg(env_option()),
         )
         .subcommand(id_command("get", "project_id", "Show a project"))
         .subcommand(
@@ -241,6 +242,7 @@ fn task_command() -> Command {
                 .arg(option("provider", "PROVIDER"))
                 .arg(option("model", "MODEL"))
                 .arg(option("prompt", "PROMPT"))
+                .arg(env_option())
                 .arg(option("workspace-id", "WORKSPACE_ID"))
                 .arg(option("tab-id", "TAB_ID"))
                 .arg(option("pane-id", "PANE_ID")),

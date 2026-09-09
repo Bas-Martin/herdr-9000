@@ -151,10 +151,14 @@ impl App {
             }
         };
         if let Some(task_name) = params.task_name.as_deref() {
-            if task_name.trim().is_empty() {
+            if task_name.trim().is_empty() || task_name.chars().any(char::is_control) {
                 Self::send_api_response(
                     respond_to,
-                    encode_error(id, "invalid_request", "task name must not be empty"),
+                    encode_error(
+                        id,
+                        "invalid_request",
+                        "task name must be printable and must not be empty",
+                    ),
                 );
                 return;
             }
@@ -577,6 +581,12 @@ impl App {
                 .projects
                 .find(&project_id)
                 .and_then(|project| project.default_agent.clone());
+            let environment = self
+                .state
+                .projects
+                .find(&project_id)
+                .map(|project| project.environment.clone())
+                .unwrap_or_default();
             let prompt = Some(task_name.clone());
             let task = crate::task::Task::new(
                 project_id,
@@ -587,6 +597,7 @@ impl App {
                 provider,
                 None,
                 prompt,
+                environment,
                 Some(self.public_workspace_id(ws_idx)),
                 Some(tab.tab_id.clone()),
                 Some(root_pane.pane_id.clone()),

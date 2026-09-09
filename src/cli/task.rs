@@ -2,6 +2,7 @@ use crate::api::schema::{
     TaskCreateParams, TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
+use std::collections::BTreeMap;
 
 pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
     let Some(subcommand) = args.first().map(String::as_str) else {
@@ -75,6 +76,7 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
     let mut workspace_id = None;
     let mut tab_id = None;
     let mut pane_id = None;
+    let mut environment = BTreeMap::new();
     let mut index = 0;
     while index < args.len() {
         let option = args[index].as_str();
@@ -126,6 +128,17 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
                     return Ok(2);
                 };
                 provider = Some(value);
+                index += 2;
+            }
+            "--env" => {
+                let Some(value) = option_value(args, index, option) else {
+                    return Ok(2);
+                };
+                let Some((name, value)) = value.split_once('=') else {
+                    eprintln!("environment must use NAME=VALUE");
+                    return Ok(2);
+                };
+                environment.insert(name.to_owned(), value.to_owned());
                 index += 2;
             }
             "--model" => {
@@ -182,6 +195,7 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
         provider,
         model,
         prompt,
+        environment: (!environment.is_empty()).then_some(environment),
         workspace_id,
         tab_id,
         pane_id,

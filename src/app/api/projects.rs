@@ -34,6 +34,7 @@ impl App {
                 teardown: project.lifecycle.teardown.clone(),
             },
             preserve_patterns: project.preserve_patterns.clone(),
+            environment: project.environment.clone(),
         }
     }
 
@@ -108,12 +109,17 @@ impl App {
             Ok(lifecycle) => lifecycle,
             Err(message) => return encode_error(id, "invalid_params", message),
         };
+        let environment = match normalize_environment(params.environment) {
+            Ok(environment) => environment,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
         let previous = self.state.projects.clone();
         let worktree_base = clean_worktree_base(params.worktree_base);
         let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
         project.default_agent = default_agent;
         project.preserve_patterns = preserve_patterns;
         project.lifecycle = lifecycle;
+        project.environment = environment;
         project.worktree_base = worktree_base;
         self.state.projects.insert(project.clone());
         if let Err(err) = crate::persist::save_projects(&self.state.projects) {
@@ -207,6 +213,7 @@ impl App {
             None,
             None,
             None,
+            None,
         )
     }
     pub(super) fn handle_project_update(
@@ -224,6 +231,7 @@ impl App {
             params.default_agent,
             params.preserve_patterns,
             params.lifecycle,
+            params.environment,
         )
     }
     fn update_project(
@@ -237,6 +245,7 @@ impl App {
         default_agent_param: Option<String>,
         preserve_patterns_param: Option<Vec<String>>,
         lifecycle_param: Option<crate::api::schema::ProjectLifecycle>,
+        environment_param: Option<std::collections::BTreeMap<String, String>>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -297,6 +306,13 @@ impl App {
             },
             None => existing.lifecycle.clone(),
         };
+        let environment = match environment_param {
+            Some(environment) => match normalize_environment(Some(environment)) {
+                Ok(environment) => environment,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => existing.environment.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
@@ -305,6 +321,7 @@ impl App {
         project.default_agent = default_agent;
         let old_root_path = project.root_path.clone();
         project.name = name.to_owned();
+        project.environment = environment;
         project.root_path = root_path;
         project.worktree_root = worktree_root;
         project.lifecycle = lifecycle;
@@ -433,6 +450,41 @@ fn normalize_lifecycle_command(
         ));
     }
     Ok(Some(value))
+}
+
+pub(super) fn normalize_environment(
+    value: Option<std::collections::BTreeMap<String, String>>,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let Some(values) = value else {
+        return Ok(std::collections::BTreeMap::new());
+    };
+    let mut environment = std::collections::BTreeMap::new();
+    for (name, value) in values {
+        if name.is_empty()
+            || name.len() > 128
+            || !name
+                .chars()
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+            || !name
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+        {
+            return Err(format!("invalid environment variable name: {name}"));
+        }
+        if name.starts_with("HERDR_") {
+            return Err(format!(
+                "environment variable {name} is reserved for Herdr metadata"
+            ));
+        }
+        if value.len() > 32768 || value.chars().any(char::is_control) || value.contains('"') {
+            return Err(format!(
+                "environment variable {name} must be printable and at most 32768 bytes"
+            ));
+        }
+        environment.insert(name, value);
+    }
+    Ok(environment)
 }
 
 fn project_not_found(id: String, project_id: &str) -> String {

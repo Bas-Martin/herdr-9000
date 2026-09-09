@@ -720,6 +720,7 @@ impl ClientShellState {
                 default_agent: None,
                 preserve_patterns: None,
                 lifecycle: None,
+                environment: None,
             })
         } else {
             crate::api::schema::Method::ProjectCreate(crate::api::schema::ProjectCreateParams {
@@ -732,6 +733,7 @@ impl ClientShellState {
                 default_agent: None,
                 preserve_patterns: None,
                 lifecycle: None,
+                environment: None,
             })
         };
         project.submitting = true;
@@ -1478,6 +1480,7 @@ impl ClientShellState {
                 worktree_root: patterns.worktree_root.clone(),
                 worktree_base: patterns.worktree_base.clone(),
                 default_agent: None,
+                environment: None,
                 preserve_patterns: Some(patterns.patterns.clone()),
                 lifecycle: None,
             });
@@ -1513,6 +1516,7 @@ impl ClientShellState {
                     root_path,
                     worktree_root,
                     worktree_base: Some(trimmed.to_owned()),
+                    environment: None,
                     default_agent: None,
                     preserve_patterns: None,
                     lifecycle: None,
@@ -1530,6 +1534,7 @@ impl ClientShellState {
                     root_path,
                     worktree_root,
                     worktree_base: None,
+                    environment: None,
                     default_agent: Some(trimmed.to_owned()),
                     preserve_patterns: None,
                     lifecycle: None,

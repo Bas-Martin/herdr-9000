@@ -117,6 +117,22 @@ pub(crate) fn scrollback_editor_argv(path: &std::path::Path) -> std::io::Result<
 pub(crate) fn interactive_shell_command(argv: &[String], shell_name: &str) -> Option<String> {
     super::interactive_unix_shell_command(argv, shell_name, shell_quote)
 }
+pub(crate) fn interactive_shell_command_with_env(
+    argv: &[String],
+    shell_name: &str,
+    environment: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let command = interactive_shell_command(argv, shell_name)?;
+    if environment.is_empty() {
+        return Some(command);
+    }
+    let prefix = environment
+        .iter()
+        .map(|(name, value)| format!("{}={}", shell_quote(name), shell_quote(value)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!("{prefix} {command}"))
+}
 
 fn shell_quote(value: &str) -> String {
     if !value.is_empty()

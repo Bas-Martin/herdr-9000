@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use crate::api::schema::{
@@ -15,17 +16,18 @@ use super::responses::{encode_error, encode_success};
 impl App {
     pub(super) fn handle_task_create(&mut self, id: String, params: TaskCreateParams) -> String {
         let name = params.name.trim();
-        if name.is_empty() {
-            return encode_error(id, "invalid_params", "task name must not be empty");
+        if name.is_empty() || name.chars().any(char::is_control) {
+            return encode_error(
+                id,
+                "invalid_params",
+                "task name must be printable and must not be empty",
+            );
         }
-        if self.state.projects.find(&params.project_id).is_none() {
+        let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
             return project_not_found(id, &params.project_id);
-        }
-        let project_default_agent = self
-            .state
-            .projects
-            .find(&params.project_id)
-            .and_then(|project| project.default_agent.clone());
+        };
+        let project_default_agent = project.default_agent.clone();
+        let mut environment = project.environment.clone();
         let worktree_path = match params.location {
             TaskLocationMode::Repository => {
                 if params
@@ -69,6 +71,11 @@ impl App {
                 Some(path)
             }
         };
+        let task_environment = match super::projects::normalize_environment(params.environment) {
+            Ok(environment) => environment,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
+        environment.extend(task_environment);
         let provider = match clean_optional(params.provider).or(project_default_agent) {
             Some(provider) => match crate::project::normalize_agent_provider(&provider) {
                 Ok(provider) => Some(provider),
@@ -86,6 +93,7 @@ impl App {
             provider,
             clean_optional(params.model),
             params.prompt.filter(|prompt| !prompt.is_empty()),
+            environment,
             clean_optional(params.workspace_id),
             clean_optional(params.tab_id),
             clean_optional(params.pane_id),
@@ -120,6 +128,17 @@ impl App {
         let Some(provider) = task.provider.clone() else {
             return Ok(());
         };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            let message = format!("project {} no longer exists", task.project_id);
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let Some(workspace_path) = task_workspace_path(&task, &project) else {
+            let message = "task has no workspace path for automatic agent launch".to_owned();
+            self.record_task_error(task_id, message.clone());
+            return Err(message);
+        };
+        let environment = task_environment(&task, &project, &workspace_path);
         let Some(pane_id) = task.pane_id.clone() else {
             let message = "task has no runtime pane for automatic agent launch".to_owned();
             self.record_task_error(task_id, message.clone());
@@ -150,13 +169,16 @@ impl App {
             self.state.tasks = previous;
             return Err(format!("task launch metadata could not be saved: {err}"));
         }
-        let start = self.start_agent(AgentStartParams {
-            name: task.id.clone(),
-            kind: provider,
-            pane_id,
-            args: Vec::new(),
-            timeout_ms: None,
-        });
+        let start = self.start_agent_with_environment(
+            AgentStartParams {
+                name: task.id.clone(),
+                kind: provider,
+                pane_id,
+                args: Vec::new(),
+                timeout_ms: None,
+            },
+            &environment,
+        );
         if let Err(err) = start {
             let message = self.agent_start_error_body(err).message;
             self.record_task_error(task_id, message.clone());
@@ -179,6 +201,7 @@ impl App {
             self.record_task_error(task_id, message.clone());
             return Err(message);
         };
+        let environment = task_environment(&task, &project, &workspace_path);
         let steps = [
             (TaskLifecycleStep::Prepare, project.lifecycle.prepare),
             (TaskLifecycleStep::Setup, project.lifecycle.setup),
@@ -186,7 +209,13 @@ impl App {
         ];
         for (step, command) in steps {
             if let Some(command) = command {
-                self.run_task_lifecycle_step(task_id, step, &workspace_path, &command)?;
+                self.run_task_lifecycle_step(
+                    task_id,
+                    step,
+                    &workspace_path,
+                    &environment,
+                    &command,
+                )?;
             }
         }
         Ok(())
@@ -209,10 +238,12 @@ impl App {
             self.record_task_error(task_id, message.clone());
             return Err(message);
         };
+        let environment = task_environment(&task, &project, &workspace_path);
         self.run_task_lifecycle_step(
             task_id,
             TaskLifecycleStep::Teardown,
             &workspace_path,
+            &environment,
             command,
         )
     }
@@ -222,6 +253,7 @@ impl App {
         task_id: &str,
         step: TaskLifecycleStep,
         workspace_path: &std::path::Path,
+        environment: &BTreeMap<String, String>,
         command: &str,
     ) -> Result<(), String> {
         let started_at = crate::task::current_unix_ms();
@@ -243,7 +275,7 @@ impl App {
             return Err(format!("lifecycle run could not be saved: {err}"));
         }
 
-        let (output, error) = run_lifecycle_command(workspace_path, command);
+        let (output, error) = run_lifecycle_command(workspace_path, environment, command);
         let finished_at = crate::task::current_unix_ms();
         let Some(task) = self.state.tasks.find_mut(task_id) else {
             return Err(format!("task {task_id} no longer exists"));
@@ -582,6 +614,7 @@ impl App {
             provider: task.provider.clone(),
             model: task.model.clone(),
             prompt: task.prompt.clone(),
+            environment: task.environment.clone(),
             agent_command: task.agent_command.clone(),
             agent_session: task.agent_session.as_ref().map(|session| {
                 crate::api::schema::AgentSessionInfo {
@@ -726,6 +759,28 @@ fn task_workspace_path(
         TaskLocationMode::Worktree => task.worktree_path.clone(),
     }
 }
+fn task_environment(
+    task: &Task,
+    project: &crate::project::Project,
+    workspace_path: &std::path::Path,
+) -> BTreeMap<String, String> {
+    let mut environment = task.environment.clone();
+    environment.insert("HERDR_TASK_ID".to_owned(), task.id.clone());
+    environment.insert("HERDR_TASK_NAME".to_owned(), task.name.clone());
+    environment.insert(
+        "HERDR_TASK_PATH".to_owned(),
+        crate::project::display_path(workspace_path),
+    );
+    environment.insert("HERDR_PROJECT_ID".to_owned(), project.id.clone());
+    environment.insert(
+        "HERDR_PROJECT_ROOT".to_owned(),
+        crate::project::display_path(&project.root_path),
+    );
+    if let Some(branch) = task.branch.as_deref() {
+        environment.insert("HERDR_TASK_BRANCH".to_owned(), branch.to_owned());
+    }
+    environment
+}
 
 fn lifecycle_step_label(step: TaskLifecycleStep) -> &'static str {
     match step {
@@ -738,6 +793,7 @@ fn lifecycle_step_label(step: TaskLifecycleStep) -> &'static str {
 
 fn run_lifecycle_command(
     workspace_path: &std::path::Path,
+    environment: &BTreeMap<String, String>,
     command_text: &str,
 ) -> (Option<String>, Option<String>) {
     let mut command =
@@ -749,6 +805,7 @@ fn run_lifecycle_command(
     }
     let output = command
         .current_dir(workspace_path)
+        .envs(environment)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
