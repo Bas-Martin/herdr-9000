@@ -56,7 +56,7 @@ pub(super) fn save_json_to_path<T: serde::Serialize>(
     let json = serde_json::to_string_pretty(snapshot)?;
     let tmp_path = target.with_extension("json.tmp");
     std::fs::write(&tmp_path, &json)?;
-    if let Err(err) = std::fs::rename(&tmp_path, &target) {
+    if let Err(err) = crate::platform::replace_file(&tmp_path, &target) {
         let _ = std::fs::remove_file(&tmp_path);
         return Err(err);
     }
