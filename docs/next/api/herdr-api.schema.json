@@ -11719,6 +11719,15 @@
           ],
           "type": "object"
         },
+        "TaskAgentStatus": {
+          "enum": [
+            "idle",
+            "working",
+            "blocked",
+            "unknown"
+          ],
+          "type": "string"
+        },
         "TaskDiffFile": {
           "properties": {
             "additions": {
@@ -11868,6 +11877,29 @@
           ],
           "type": "object"
         },
+        "TaskHistoryInfo": {
+          "properties": {
+            "at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/TaskStatus"
+            }
+          },
+          "required": [
+            "status",
+            "at"
+          ],
+          "type": "object"
+        },
         "TaskInfo": {
           "properties": {
             "agent_command": {
@@ -11880,6 +11912,16 @@
               "anyOf": [
                 {
                   "$ref": "#/schemas/success_response/$defs/AgentSessionInfo"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "agent_status": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/TaskAgentStatus"
                 },
                 {
                   "type": "null"
@@ -11905,6 +11947,12 @@
               "minimum": 0,
               "type": "integer"
             },
+            "current_step": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "environment": {
               "additionalProperties": {
                 "type": "string"
@@ -11917,6 +11965,12 @@
                 "string",
                 "null"
               ]
+            },
+            "history": {
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/TaskHistoryInfo"
+              },
+              "type": "array"
             },
             "lifecycle_runs": {
               "items": {
@@ -12116,6 +12170,13 @@
         },
         "TaskStatus": {
           "enum": [
+            "queued",
+            "provisioning",
+            "working",
+            "blocked",
+            "review_ready",
+            "failed",
+            "completed",
             "open",
             "closed"
           ],

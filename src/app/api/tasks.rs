@@ -126,7 +126,11 @@ impl App {
             return Err(format!("task {task_id} no longer exists"));
         };
         let Some(provider) = task.provider.clone() else {
-            return Ok(());
+            return self.transition_task(
+                task_id,
+                TaskStatus::ReviewReady,
+                Some("no agent provider configured".to_owned()),
+            );
         };
         let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
             let message = format!("project {} no longer exists", task.project_id);
@@ -184,6 +188,11 @@ impl App {
             self.record_task_error(task_id, message.clone());
             return Err(message);
         }
+        self.transition_task(
+            task_id,
+            TaskStatus::Working,
+            Some("agent started".to_owned()),
+        )?;
         self.schedule_task_agent_prompt(task.id, 0);
         Ok(())
     }
@@ -202,6 +211,13 @@ impl App {
             return Err(message);
         };
         let environment = task_environment(&task, &project, &workspace_path);
+        if !project.lifecycle.is_empty() {
+            self.transition_task(
+                task_id,
+                TaskStatus::Provisioning,
+                Some("lifecycle provisioning".to_owned()),
+            )?;
+        }
         let steps = [
             (TaskLifecycleStep::Prepare, project.lifecycle.prepare),
             (TaskLifecycleStep::Setup, project.lifecycle.setup),
@@ -269,6 +285,7 @@ impl App {
             output: None,
             error: None,
         });
+        task.current_step = Some(lifecycle_step_label(step).to_owned());
         task.updated_at = started_at;
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
@@ -292,12 +309,21 @@ impl App {
         run.finished_at = Some(finished_at);
         run.output = output;
         run.error = error.clone();
+        task.current_step = None;
         task.updated_at = finished_at;
         if let Some(error) = error {
             task.error = Some(format!(
                 "lifecycle {} failed: {error}",
                 lifecycle_step_label(step)
             ));
+            if task.status != TaskStatus::Failed {
+                task.status = TaskStatus::Failed;
+                task.history.push(crate::task::TaskHistoryEntry {
+                    status: TaskStatus::Failed,
+                    at: finished_at,
+                    reason: Some(format!("lifecycle {} failed", lifecycle_step_label(step))),
+                });
+            }
         }
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             tracing::error!(task_id, error = %err, "failed to persist lifecycle result");
@@ -401,14 +427,110 @@ impl App {
         }
     }
 
+    fn transition_task(
+        &mut self,
+        task_id: &str,
+        status: TaskStatus,
+        reason: Option<String>,
+    ) -> Result<(), String> {
+        let previous = self.state.tasks.clone();
+        let Some(task) = self.state.tasks.find_mut(task_id) else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        if task.status == status {
+            return Ok(());
+        }
+        let now = crate::task::current_unix_ms();
+        task.status = status;
+        task.updated_at = now;
+        task.history.push(crate::task::TaskHistoryEntry {
+            status,
+            at: now,
+            reason,
+        });
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return Err(format!("task status could not be saved: {err}"));
+        }
+        Ok(())
+    }
+
     fn record_task_error(&mut self, task_id: &str, message: String) {
         let Some(task) = self.state.tasks.find_mut(task_id) else {
             return;
         };
-        task.error = Some(message);
-        task.updated_at = crate::task::current_unix_ms();
+        let now = crate::task::current_unix_ms();
+        task.error = Some(message.clone());
+        task.updated_at = now;
+        if task.status != TaskStatus::Failed {
+            task.status = TaskStatus::Failed;
+            task.history.push(crate::task::TaskHistoryEntry {
+                status: TaskStatus::Failed,
+                at: now,
+                reason: Some(message),
+            });
+        }
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             tracing::error!(task_id, error = %err, "failed to persist task error");
+        }
+    }
+
+    pub(super) fn record_task_agent_status(
+        &mut self,
+        pane_id: crate::layout::PaneId,
+        state: crate::detect::AgentState,
+    ) {
+        let Some((workspace_index, _)) = self.find_pane(pane_id) else {
+            return;
+        };
+        let Some(public_pane_id) = self.public_pane_id(workspace_index, pane_id) else {
+            return;
+        };
+        let (agent_status, task_status) = match state {
+            crate::detect::AgentState::Idle => {
+                (crate::task::TaskAgentStatus::Idle, TaskStatus::ReviewReady)
+            }
+            crate::detect::AgentState::Working => {
+                (crate::task::TaskAgentStatus::Working, TaskStatus::Working)
+            }
+            crate::detect::AgentState::Blocked => {
+                (crate::task::TaskAgentStatus::Blocked, TaskStatus::Blocked)
+            }
+            crate::detect::AgentState::Unknown => {
+                (crate::task::TaskAgentStatus::Unknown, TaskStatus::Queued)
+            }
+        };
+        let now = crate::task::current_unix_ms();
+        let mut changed = false;
+        for task in &mut self.state.tasks.tasks {
+            if task.pane_id.as_deref() != Some(public_pane_id.as_str())
+                || task.status == TaskStatus::Closed
+            {
+                continue;
+            }
+            let mut task_changed = false;
+            if task.agent_status != Some(agent_status) {
+                task.agent_status = Some(agent_status);
+                task_changed = true;
+            }
+            if state != crate::detect::AgentState::Unknown && task.status != task_status {
+                task.status = task_status;
+                task.history.push(crate::task::TaskHistoryEntry {
+                    status: task_status,
+                    at: now,
+                    reason: Some(format!("agent state: {state:?}")),
+                });
+                task_changed = true;
+            }
+            if task_changed {
+                task.updated_at = now;
+                changed = true;
+            }
+        }
+        if changed {
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                tracing::error!(error = %err, "failed to persist task agent status");
+            }
         }
     }
     pub(super) fn record_task_agent_session(
@@ -551,8 +673,14 @@ impl App {
         if task.status != TaskStatus::Closed {
             let now = crate::task::current_unix_ms();
             task.status = TaskStatus::Closed;
+            task.current_step = None;
             task.updated_at = now;
             task.closed_at = Some(now);
+            task.history.push(crate::task::TaskHistoryEntry {
+                status: TaskStatus::Closed,
+                at: now,
+                reason: Some("task closed".to_owned()),
+            });
         }
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
@@ -988,6 +1116,17 @@ impl App {
                 .collect(),
             pull_request_url: task.pull_request_url.clone(),
             status: task.status,
+            current_step: task.current_step.clone(),
+            agent_status: task.agent_status,
+            history: task
+                .history
+                .iter()
+                .map(|entry| crate::api::schema::TaskHistoryInfo {
+                    status: entry.status,
+                    at: entry.at,
+                    reason: entry.reason.clone(),
+                })
+                .collect(),
             created_at: task.created_at,
             updated_at: task.updated_at,
             closed_at: task.closed_at,

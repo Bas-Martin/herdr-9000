@@ -28,8 +28,32 @@ pub(crate) enum TaskLocationMode {
 )]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TaskStatus {
+    Queued,
+    Provisioning,
+    Working,
+    Blocked,
+    ReviewReady,
+    Failed,
+    Completed,
     Open,
     Closed,
+}
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TaskAgentStatus {
+    Idle,
+    Working,
+    Blocked,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TaskHistoryEntry {
+    pub(crate) status: TaskStatus,
+    pub(crate) at: u64,
+    pub(crate) reason: Option<String>,
 }
 
 #[derive(
@@ -86,6 +110,12 @@ pub(crate) struct Task {
     pub(crate) lifecycle_runs: Vec<TaskLifecycleRun>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) pull_request_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) current_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agent_status: Option<TaskAgentStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) history: Vec<TaskHistoryEntry>,
     pub(crate) status: TaskStatus,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
@@ -163,7 +193,14 @@ impl Task {
             agent_session: None,
             lifecycle_runs: Vec::new(),
             pull_request_url: None,
-            status: TaskStatus::Open,
+            current_step: None,
+            agent_status: None,
+            history: vec![TaskHistoryEntry {
+                status: TaskStatus::Queued,
+                at: now,
+                reason: Some("task created".to_owned()),
+            }],
+            status: TaskStatus::Queued,
             created_at: now,
             updated_at: now,
             closed_at: None,

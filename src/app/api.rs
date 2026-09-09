@@ -331,6 +331,13 @@ impl App {
             }),
             _ => None,
         };
+        let task_agent_state = match &ev {
+            AppEvent::StateChanged { pane_id, state, .. } => Some((*pane_id, *state)),
+            _ => None,
+        };
+        if let Some((pane_id, state)) = task_agent_state {
+            self.record_task_agent_status(pane_id, state);
+        }
         let previous_toast = self.state.toast.clone();
         let mut pane_updates = self.state.handle_app_event(ev);
         if let Some((pane_id, source, agent_label, session_ref)) = task_agent_session {

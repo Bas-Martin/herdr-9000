@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::task::{TaskLifecycleStatus, TaskLifecycleStep, TaskLocationMode, TaskStatus};
+use crate::task::{
+    TaskAgentStatus, TaskLifecycleStatus, TaskLifecycleStep, TaskLocationMode, TaskStatus,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskCreateParams {
@@ -69,6 +71,14 @@ pub struct TaskLifecycleRunInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskHistoryInfo {
+    pub status: TaskStatus,
+    pub at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskInfo {
     pub task_id: String,
     pub project_id: String,
@@ -97,6 +107,12 @@ pub struct TaskInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pull_request_url: Option<String>,
     pub status: TaskStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_step: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_status: Option<TaskAgentStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<TaskHistoryInfo>,
     pub created_at: u64,
     pub updated_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
