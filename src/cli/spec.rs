@@ -42,6 +42,7 @@ pub(super) fn command() -> Command {
         .subcommand(notification_command())
         .subcommand(project_command())
         .subcommand(task_command())
+        .subcommand(resource_command())
         .subcommand(agent_command())
         .subcommand(pane_command())
         .subcommand(terminal_command())
@@ -243,6 +244,7 @@ fn task_command() -> Command {
                 .arg(option("model", "MODEL"))
                 .arg(option("prompt", "PROMPT"))
                 .arg(env_option())
+                .arg(repeatable_option("resource", "RESOURCE_ID"))
                 .arg(option("workspace-id", "WORKSPACE_ID"))
                 .arg(option("tab-id", "TAB_ID"))
                 .arg(option("pane-id", "PANE_ID")),
@@ -261,6 +263,12 @@ fn task_command() -> Command {
                 .arg(required("name", "NAME").num_args(1..)),
         )
         .subcommand(id_command("close", "task_id", "Close a task"))
+        .subcommand(
+            Command::new("resources")
+                .about("Set task reusable resources")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(repeatable_option("resource", "RESOURCE_ID")),
+        )
         .subcommand(
             Command::new("diff")
                 .about("Show task changes")
@@ -310,6 +318,39 @@ fn task_command() -> Command {
                 .arg(path_option("worktree-path", "PATH"))
                 .arg(option("prompt", "PROMPT")),
         )
+}
+
+fn resource_command() -> Command {
+    Command::new("resource")
+        .about("Manage reusable prompts, skills, and MCP resources")
+        .subcommand(Command::new("list").about("List resources"))
+        .subcommand(
+            Command::new("create")
+                .about("Create a reusable resource")
+                .arg(option("kind", "prompt|skill|mcp").required(true))
+                .arg(option("name", "NAME").required(true))
+                .arg(option("description", "TEXT"))
+                .arg(option("scope", "global|project|task").required(true))
+                .arg(option("project", "PROJECT_ID"))
+                .arg(option("task", "TASK_ID"))
+                .arg(option("provider", "PROVIDER"))
+                .arg(option("content", "TEXT").required(true)),
+        )
+        .subcommand(
+            Command::new("update")
+                .about("Update a reusable resource")
+                .arg(required("resource_id", "RESOURCE_ID"))
+                .arg(option("name", "NAME"))
+                .arg(option("description", "TEXT"))
+                .arg(option("content", "TEXT"))
+                .arg(flag("enable"))
+                .arg(flag("disable")),
+        )
+        .subcommand(id_command(
+            "delete",
+            "resource_id",
+            "Delete a reusable resource",
+        ))
 }
 
 fn workspace_command() -> Command {

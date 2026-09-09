@@ -407,6 +407,11 @@ impl App {
 
         let projects = crate::persist::load_projects();
         let tasks = crate::persist::load_tasks();
+        let resources = crate::persist::load_resources().unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "failed to load resource library");
+            crate::resource::ResourceRegistry::default()
+        });
+        crate::resource::reserve_resource_ids(&resources);
 
         let agent_panel_sort = agent_panel_sort_from_config(config.ui.agent_panel_sort);
 
@@ -452,6 +457,7 @@ impl App {
             active,
             projects,
             tasks,
+            resources,
             previous_pane_focus: None,
             selected,
             mode,

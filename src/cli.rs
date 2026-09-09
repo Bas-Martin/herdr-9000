@@ -32,6 +32,7 @@ mod pane;
 mod plugin;
 mod project;
 mod protocol_guard;
+mod resource;
 mod runtime;
 mod server;
 mod server_not_running;
@@ -105,6 +106,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
     }
 
     let exit_code = match command {
+        "resource" => resource::run_resource_command(&args[2..])?,
         "project" => project::run_project_command(&args[2..])?,
         "task" => task::run_task_command(&args[2..])?,
         "server" => {

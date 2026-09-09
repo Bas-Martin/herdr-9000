@@ -4368,6 +4368,134 @@
           ],
           "type": "object"
         },
+        "ResourceCreateParams": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "description": {
+              "default": "",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/schemas/request/$defs/ResourceKind"
+            },
+            "name": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/schemas/request/$defs/ResourceScope"
+            },
+            "task_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "name",
+            "scope",
+            "content"
+          ],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "enum": [
+            "prompt",
+            "skill",
+            "mcp"
+          ],
+          "type": "string"
+        },
+        "ResourceListParams": {
+          "properties": {
+            "include_disabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "task_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ResourceScope": {
+          "enum": [
+            "global",
+            "project",
+            "task"
+          ],
+          "type": "string"
+        },
+        "ResourceTarget": {
+          "properties": {
+            "resource_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resource_id"
+          ],
+          "type": "object"
+        },
+        "ResourceUpdateParams": {
+          "properties": {
+            "content": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "resource_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "resource_id"
+          ],
+          "type": "object"
+        },
         "ServerLiveHandoffParams": {
           "properties": {
             "expected_protocol": {
@@ -4919,6 +5047,12 @@
                 "null"
               ]
             },
+            "resource_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
             "tab_id": {
               "type": [
                 "string",
@@ -5088,6 +5222,23 @@
           "required": [
             "task_id",
             "name"
+          ],
+          "type": "object"
+        },
+        "TaskResourcesParams": {
+          "properties": {
+            "resource_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
           ],
           "type": "object"
         },
@@ -5985,6 +6136,22 @@
         {
           "properties": {
             "method": {
+              "const": "task.resources",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskResourcesParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "task.close",
               "type": "string"
             },
@@ -6134,6 +6301,70 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/ExternalIssueTaskCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "resource.create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ResourceCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "resource.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ResourceListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "resource.update",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ResourceUpdateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "resource.delete",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ResourceTarget"
             }
           },
           "required": [
@@ -10450,6 +10681,87 @@
           ],
           "type": "string"
         },
+        "ResourceInfo": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "created_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "description": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "kind": {
+              "$ref": "#/schemas/success_response/$defs/ResourceKind"
+            },
+            "name": {
+              "type": "string"
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "resource_id": {
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/schemas/success_response/$defs/ResourceScope"
+            },
+            "task_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updated_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "resource_id",
+            "kind",
+            "name",
+            "description",
+            "scope",
+            "content",
+            "enabled",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "enum": [
+            "prompt",
+            "skill",
+            "mcp"
+          ],
+          "type": "string"
+        },
+        "ResourceScope": {
+          "enum": [
+            "global",
+            "project",
+            "task"
+          ],
+          "type": "string"
+        },
         "ResponseResult": {
           "oneOf": [
             {
@@ -10744,6 +11056,22 @@
                   "$ref": "#/schemas/success_response/$defs/TaskInfo"
                 },
                 "type": {
+                  "const": "task_resources_updated",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
                   "const": "task_closed",
                   "type": "string"
                 }
@@ -10909,6 +11237,57 @@
                 "type",
                 "task",
                 "issue"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "resource": {
+                  "$ref": "#/schemas/success_response/$defs/ResourceInfo"
+                },
+                "type": {
+                  "const": "resource_info",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "resource"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "resources": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/ResourceInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "resource_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "resources"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "resource_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "resource_deleted",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "resource_id"
               ],
               "type": "object"
             },
@@ -12694,6 +13073,12 @@
                 "string",
                 "null"
               ]
+            },
+            "resource_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
             },
             "runtime_available": {
               "type": "boolean"

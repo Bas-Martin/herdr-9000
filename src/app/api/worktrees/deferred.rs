@@ -598,6 +598,7 @@ impl App {
                 None,
                 prompt,
                 environment,
+                Vec::new(),
                 Some(self.public_workspace_id(ws_idx)),
                 Some(tab.tab_id.clone()),
                 Some(root_pane.pane_id.clone()),

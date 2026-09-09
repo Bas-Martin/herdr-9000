@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::api::schema::{
     DiffView, GitHubIssueSearchParams, GitHubIssueTaskCreateParams, TaskCreateParams,
     TaskDiffParams, TaskFileWriteParams, TaskGitAction, TaskGitActionParams, TaskListParams,
-    TaskOpenParams, TaskRenameParams, TaskTarget,
+    TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
 
@@ -19,6 +19,7 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "open" => task_open(&args[1..]),
         "rename" => task_rename(&args[1..]),
         "close" => task_close(&args[1..]),
+        "resources" => task_resources(&args[1..]),
         "diff" => task_diff(&args[1..]),
         "write" => task_write(&args[1..]),
         "github-search" => github_search(&args[1..]),
@@ -86,6 +87,7 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
     let mut tab_id = None;
     let mut pane_id = None;
     let mut environment = BTreeMap::new();
+    let mut resource_ids = Vec::new();
     let mut index = 0;
     while index < args.len() {
         let option = args[index].as_str();
@@ -150,6 +152,13 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
                 environment.insert(name.to_owned(), value.to_owned());
                 index += 2;
             }
+            "--resource" => {
+                let Some(value) = option_value(args, index, option) else {
+                    return Ok(2);
+                };
+                resource_ids.push(value);
+                index += 2;
+            }
             "--model" => {
                 let Some(value) = option_value(args, index, option) else {
                     return Ok(2);
@@ -205,6 +214,7 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
         model,
         prompt,
         environment: (!environment.is_empty()).then_some(environment),
+        resource_ids,
         workspace_id,
         tab_id,
         pane_id,
@@ -251,6 +261,31 @@ fn task_close(args: &[String]) -> std::io::Result<i32> {
     }
     super::runtime::task_close(TaskTarget {
         task_id: args[0].clone(),
+    })
+}
+
+fn task_resources(args: &[String]) -> std::io::Result<i32> {
+    let Some(task_id) = args.first() else {
+        eprintln!("usage: herdr task resources <task_id> [--resource RESOURCE_ID ...]");
+        return Ok(2);
+    };
+    let mut resource_ids = Vec::new();
+    let mut index = 1;
+    while index < args.len() {
+        if args[index] != "--resource" {
+            eprintln!("unknown option: {}", args[index]);
+            return Ok(2);
+        }
+        let Some(resource_id) = args.get(index + 1) else {
+            eprintln!("missing value for --resource");
+            return Ok(2);
+        };
+        resource_ids.push(resource_id.clone());
+        index += 2;
+    }
+    super::runtime::task_resources(TaskResourcesParams {
+        task_id: task_id.clone(),
+        resource_ids,
     })
 }
 fn task_checks(args: &[String]) -> std::io::Result<i32> {
@@ -566,6 +601,7 @@ fn print_task_help() {
     println!("  open <task_id> [--focus|--no-focus]");
     println!("  rename <task_id> <name>");
     println!("  close <task_id>");
+    println!("  resources <task_id> [--resource RESOURCE_ID ...]");
     println!("  diff <task_id> [--base REF] [--split|--unified]");
     println!("  write <task_id> --path PATH --content TEXT");
     println!("  git <task_id> <stage|unstage|commit|push|pr> [OPTIONS]");

@@ -3,9 +3,10 @@ use crate::api::schema::{
     PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams, PaneRenameParams,
     PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget, PaneZoomParams,
     ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget, Request,
+    ResourceCreateParams, ResourceListParams, ResourceTarget, ResourceUpdateParams,
     TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskChecksParams, TaskCreateParams,
     TaskDiffParams, TaskFileWriteParams, TaskGitActionParams, TaskListParams, TaskOpenParams,
-    TaskRenameParams, TaskTarget, WorkspaceCloseParams, WorkspaceCreateParams,
+    TaskRenameParams, TaskResourcesParams, TaskTarget, WorkspaceCloseParams, WorkspaceCreateParams,
     WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams, WorktreeListParams,
     WorktreeOpenParams, WorktreeRemoveParams,
 };
@@ -95,6 +96,26 @@ pub(super) fn task_rename(params: TaskRenameParams) -> std::io::Result<i32> {
 
 pub(super) fn task_close(target: TaskTarget) -> std::io::Result<i32> {
     print_method_response("cli:task:close", Method::TaskClose(target))
+}
+
+pub(super) fn task_resources(params: TaskResourcesParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:resources", Method::TaskResources(params))
+}
+
+pub(super) fn resource_list(params: ResourceListParams) -> std::io::Result<i32> {
+    print_method_response("cli:resource:list", Method::ResourceList(params))
+}
+
+pub(super) fn resource_create(params: ResourceCreateParams) -> std::io::Result<i32> {
+    print_method_response("cli:resource:create", Method::ResourceCreate(params))
+}
+
+pub(super) fn resource_update(params: ResourceUpdateParams) -> std::io::Result<i32> {
+    print_method_response("cli:resource:update", Method::ResourceUpdate(params))
+}
+
+pub(super) fn resource_delete(target: ResourceTarget) -> std::io::Result<i32> {
+    print_method_response("cli:resource:delete", Method::ResourceDelete(target))
 }
 pub(super) fn task_diff(params: TaskDiffParams) -> std::io::Result<i32> {
     print_method_response("cli:task:diff", Method::TaskDiff(params))

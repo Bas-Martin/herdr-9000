@@ -3,10 +3,12 @@ use std::time::Duration;
 
 use crate::api::schema::{
     AgentPromptParams, AgentStartParams, ResponseResult, TaskCreateParams, TaskInfo,
-    TaskListParams, TaskOpenParams, TaskRenameParams, TaskRuntimeInfo, TaskTarget,
+    TaskListParams, TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskRuntimeInfo,
+    TaskTarget,
 };
 use crate::app::App;
 use crate::events::AppEvent;
+use crate::resource::Resource;
 use crate::task::{
     Task, TaskLifecycleRun, TaskLifecycleStatus, TaskLifecycleStep, TaskLocationMode, TaskStatus,
 };
@@ -83,6 +85,16 @@ impl App {
             },
             None => None,
         };
+        let resource_ids = params.resource_ids;
+        if let Err(message) = self.resolve_task_resources(
+            &params.project_id,
+            None,
+            &resource_ids,
+            provider.as_deref(),
+        ) {
+            return encode_error(id, "invalid_params", message);
+        }
+        let prompt = params.prompt.filter(|prompt| !prompt.is_empty());
         let previous = self.state.tasks.clone();
         let task = Task::new(
             params.project_id,
@@ -92,8 +104,9 @@ impl App {
             worktree_path,
             provider,
             clean_optional(params.model),
-            params.prompt.filter(|prompt| !prompt.is_empty()),
+            prompt,
             environment,
+            resource_ids,
             clean_optional(params.workspace_id),
             clean_optional(params.tab_id),
             clean_optional(params.pane_id),
@@ -121,6 +134,60 @@ impl App {
             },
         )
     }
+    fn resolve_task_resources(
+        &self,
+        project_id: &str,
+        task_id: Option<&str>,
+        resource_ids: &[String],
+        provider: Option<&str>,
+    ) -> Result<Vec<Resource>, String> {
+        let mut resources = Vec::new();
+        for resource_id in resource_ids {
+            let Some(resource) = self.state.resources.find(resource_id).cloned() else {
+                return Err(format!("resource {resource_id} does not exist"));
+            };
+            if !resource.enabled {
+                return Err(format!("resource {resource_id} is disabled"));
+            }
+            match resource.scope {
+                crate::resource::ResourceScope::Global => {}
+                crate::resource::ResourceScope::Project => {
+                    if resource.project_id.as_deref() != Some(project_id) {
+                        return Err(format!("resource {resource_id} belongs to another project"));
+                    }
+                }
+                crate::resource::ResourceScope::Task => {
+                    if resource.task_id.as_deref() != task_id {
+                        return Err(format!("resource {resource_id} belongs to another task"));
+                    }
+                }
+            }
+            if let Some(resource_provider) = resource.provider.as_deref() {
+                if provider != Some(resource_provider) {
+                    return Err(format!(
+                        "resource {} requires provider {resource_provider}",
+                        resource.id
+                    ));
+                }
+            }
+            resources.push(resource);
+        }
+        Ok(resources)
+    }
+    fn task_prompt(&self, task: &Task) -> Result<String, String> {
+        let resources = self.resolve_task_resources(
+            &task.project_id,
+            Some(&task.id),
+            &task.resource_ids,
+            task.provider.as_deref(),
+        )?;
+        Ok(inject_resource_prompt(
+            task.prompt.clone().filter(|prompt| !prompt.is_empty()),
+            &resources,
+        )
+        .unwrap_or_else(|| task.name.clone()))
+    }
+
     pub(super) fn start_task_agent(&mut self, task_id: &str) -> Result<(), String> {
         let Some(task) = self.state.tasks.find(task_id).cloned() else {
             return Err(format!("task {task_id} no longer exists"));
@@ -368,11 +435,13 @@ impl App {
             );
             return;
         };
-        let prompt = task
-            .prompt
-            .clone()
-            .filter(|prompt| !prompt.is_empty())
-            .unwrap_or(task.name);
+        let prompt = match self.task_prompt(&task) {
+            Ok(prompt) => prompt,
+            Err(message) => {
+                self.record_task_error(&task_id, message);
+                return;
+            }
+        };
         let request_id = format!("task-agent-prompt:{task_id}");
         match self.queue_agent_prompt(
             request_id,
@@ -655,6 +724,43 @@ impl App {
         )
     }
 
+    pub(super) fn handle_task_resources(
+        &mut self,
+        id: String,
+        params: TaskResourcesParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        if let Err(message) = self.resolve_task_resources(
+            &task.project_id,
+            Some(&task.id),
+            &params.resource_ids,
+            task.provider.as_deref(),
+        ) {
+            return encode_error(id, "invalid_params", message);
+        }
+        let previous = self.state.tasks.clone();
+        let Some(stored) = self.state.tasks.find_mut(&task.id) else {
+            return task_not_found(id, &task.id);
+        };
+        stored.resource_ids = params.resource_ids;
+        stored.updated_at = crate::task::current_unix_ms();
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return encode_error(id, "task_save_failed", err.to_string());
+        }
+        let Some(task) = self.state.tasks.find(&task.id) else {
+            return task_not_found(id, &task.id);
+        };
+        encode_success(
+            id,
+            ResponseResult::TaskResourcesUpdated {
+                task: self.task_info(task),
+            },
+        )
+    }
+
     pub(super) fn handle_task_close(&mut self, id: String, target: TaskTarget) -> String {
         let should_teardown = self
             .state
@@ -859,6 +965,7 @@ impl App {
             None,
             Some(prompt),
             project.environment.clone(),
+            Vec::new(),
             None,
             None,
             None,
@@ -1102,6 +1209,7 @@ impl App {
             None,
             Some(prompt),
             project.environment.clone(),
+            Vec::new(),
             None,
             None,
             None,
@@ -1650,6 +1758,7 @@ impl App {
             model: task.model.clone(),
             prompt: task.prompt.clone(),
             environment: task.environment.clone(),
+            resource_ids: task.resource_ids.clone(),
             agent_command: task.agent_command.clone(),
             agent_session: task.agent_session.as_ref().map(|session| {
                 crate::api::schema::AgentSessionInfo {
@@ -1810,6 +1919,28 @@ impl App {
         self.state.mode = crate::app::Mode::Terminal;
     }
 }
+fn inject_resource_prompt(prompt: Option<String>, resources: &[Resource]) -> Option<String> {
+    let mut output = String::new();
+    for resource in resources {
+        if resource.content.is_empty() {
+            continue;
+        }
+        let kind = match resource.kind {
+            crate::resource::ResourceKind::Prompt => "prompt",
+            crate::resource::ResourceKind::Skill => "skill",
+            crate::resource::ResourceKind::Mcp => "mcp",
+        };
+        output.push_str(&format!(
+            "[Herdr {kind}: {}]\n{}\n\n",
+            resource.name, resource.content
+        ));
+    }
+    if let Some(prompt) = prompt {
+        output.push_str(&prompt);
+    }
+    (!output.is_empty()).then_some(output)
+}
+
 fn task_workspace_path(
     task: &Task,
     project: &crate::project::Project,

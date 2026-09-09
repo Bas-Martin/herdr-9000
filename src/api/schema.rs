@@ -12,6 +12,7 @@ pub mod integrations;
 pub mod panes;
 pub mod plugins;
 pub mod projects;
+pub mod resources;
 pub mod response;
 pub mod server;
 pub mod session;
@@ -32,6 +33,7 @@ pub use integrations::*;
 pub use panes::*;
 pub use plugins::*;
 pub use projects::*;
+pub use resources::*;
 pub use response::*;
 pub use server::*;
 pub use session::*;
@@ -125,6 +127,8 @@ pub enum Method {
     TaskOpen(TaskOpenParams),
     #[serde(rename = "task.rename")]
     TaskRename(TaskRenameParams),
+    #[serde(rename = "task.resources")]
+    TaskResources(TaskResourcesParams),
     #[serde(rename = "task.close")]
     TaskClose(TaskTarget),
     #[serde(rename = "task.diff")]
@@ -145,6 +149,14 @@ pub enum Method {
     ExternalIssueSearch(ExternalIssueSearchParams),
     #[serde(rename = "external.task_create")]
     ExternalIssueTaskCreate(ExternalIssueTaskCreateParams),
+    #[serde(rename = "resource.create")]
+    ResourceCreate(ResourceCreateParams),
+    #[serde(rename = "resource.list")]
+    ResourceList(ResourceListParams),
+    #[serde(rename = "resource.update")]
+    ResourceUpdate(ResourceUpdateParams),
+    #[serde(rename = "resource.delete")]
+    ResourceDelete(ResourceTarget),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

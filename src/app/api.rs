@@ -9,6 +9,7 @@ mod pane_graphics;
 mod panes;
 pub(crate) mod plugins;
 mod projects;
+mod resources;
 pub(super) mod responses;
 mod session;
 mod tabs;
@@ -1077,6 +1078,7 @@ impl App {
             Method::TaskList(params) => return self.handle_task_list(request.id, params),
             Method::TaskOpen(params) => return self.handle_task_open(request.id, params),
             Method::TaskRename(params) => return self.handle_task_rename(request.id, params),
+            Method::TaskResources(params) => return self.handle_task_resources(request.id, params),
             Method::TaskClose(target) => return self.handle_task_close(request.id, target),
             Method::TaskDiff(params) => return self.handle_task_diff(request.id, params),
             Method::TaskFileWrite(params) => {
@@ -1100,6 +1102,16 @@ impl App {
             }
             Method::ExternalIssueTaskCreate(params) => {
                 return self.handle_external_issue_task_create(request.id, params)
+            }
+            Method::ResourceCreate(params) => {
+                return self.handle_resource_create(request.id, params)
+            }
+            Method::ResourceList(params) => return self.handle_resource_list(request.id, params),
+            Method::ResourceUpdate(params) => {
+                return self.handle_resource_update(request.id, params)
+            }
+            Method::ResourceDelete(target) => {
+                return self.handle_resource_delete(request.id, target)
             }
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {

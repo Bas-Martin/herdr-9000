@@ -20,6 +20,7 @@ use super::plugins::{
     PluginPaneInfo,
 };
 use super::projects::ProjectInfo;
+use super::resources::ResourceInfo as ResourceInfoPayload;
 use super::server::ServerCapabilities;
 use super::session::SessionSnapshot;
 use super::tabs::TabInfo;
@@ -102,6 +103,9 @@ pub enum ResponseResult {
     TaskRenamed {
         task: TaskInfo,
     },
+    TaskResourcesUpdated {
+        task: TaskInfo,
+    },
     TaskClosed {
         task: TaskInfo,
     },
@@ -133,6 +137,15 @@ pub enum ResponseResult {
     ExternalIssueTaskCreated {
         task: TaskInfo,
         issue: ExternalIssueInfo,
+    },
+    ResourceInfo {
+        resource: ResourceInfoPayload,
+    },
+    ResourceList {
+        resources: Vec<ResourceInfoPayload>,
+    },
+    ResourceDeleted {
+        resource_id: String,
     },
     WorktreeList {
         source: WorktreeSourceInfo,

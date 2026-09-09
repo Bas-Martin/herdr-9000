@@ -111,6 +111,8 @@ pub(crate) struct Task {
     pub(crate) prompt: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) environment: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) resource_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent_command: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -187,6 +189,7 @@ impl Task {
         model: Option<String>,
         prompt: Option<String>,
         environment: BTreeMap<String, String>,
+        resource_ids: Vec<String>,
         workspace_id: Option<String>,
         tab_id: Option<String>,
         pane_id: Option<String>,
@@ -203,6 +206,7 @@ impl Task {
             model,
             prompt,
             environment,
+            resource_ids,
             agent_command: None,
             error: None,
             agent_session: None,

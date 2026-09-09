@@ -7,6 +7,7 @@
 mod io;
 pub mod plugin_registry;
 mod projects;
+mod resources;
 mod restore;
 mod snapshot;
 mod tasks;
@@ -14,6 +15,7 @@ mod tasks;
 pub use self::io::{clear, clear_history, load, load_history, save};
 
 pub(crate) use self::projects::{load as load_projects, save as save_projects};
+pub(crate) use self::resources::{load as load_resources, save as save_resources};
 pub use self::restore::restore;
 #[cfg(unix)]
 pub use self::restore::{handoff_pane_aliases, restore_handoff};

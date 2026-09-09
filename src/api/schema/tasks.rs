@@ -23,6 +23,8 @@ pub struct TaskCreateParams {
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -55,6 +57,13 @@ pub struct TaskOpenParams {
 pub struct TaskRenameParams {
     pub task_id: String,
     pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskResourcesParams {
+    pub task_id: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -102,6 +111,8 @@ pub struct TaskInfo {
     pub error: Option<String>,
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub resource_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lifecycle_runs: Vec<TaskLifecycleRunInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
