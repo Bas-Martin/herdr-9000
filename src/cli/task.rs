@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use crate::api::schema::{
-    DiffView, TaskCreateParams, TaskDiffParams, TaskFileWriteParams, TaskGitAction,
-    TaskGitActionParams, TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget,
+    DiffView, GitHubIssueSearchParams, GitHubIssueTaskCreateParams, TaskCreateParams,
+    TaskDiffParams, TaskFileWriteParams, TaskGitAction, TaskGitActionParams, TaskListParams,
+    TaskOpenParams, TaskRenameParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
 
@@ -20,6 +21,8 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "close" => task_close(&args[1..]),
         "diff" => task_diff(&args[1..]),
         "write" => task_write(&args[1..]),
+        "github-search" => github_search(&args[1..]),
+        "github-create" => github_create(&args[1..]),
         "git" => task_git(&args[1..]),
         "help" | "--help" | "-h" => {
             print_task_help();
@@ -405,6 +408,143 @@ fn task_git(args: &[String]) -> std::io::Result<i32> {
         base,
     })
 }
+fn github_search(args: &[String]) -> std::io::Result<i32> {
+    let mut repository = None;
+    let mut query = None;
+    let mut limit = None;
+    let mut index = 0;
+    while index < args.len() {
+        let option = args[index].as_str();
+        match option {
+            "--repo" => {
+                repository = option_value(args, index, option);
+                if repository.is_none() {
+                    return Ok(2);
+                }
+            }
+            "--query" => {
+                query = option_value(args, index, option);
+                if query.is_none() {
+                    return Ok(2);
+                }
+            }
+            "--limit" => {
+                let Some(value) = option_value(args, index, option) else {
+                    return Ok(2);
+                };
+                limit = match value.parse::<u32>() {
+                    Ok(value) => Some(value),
+                    Err(_) => {
+                        eprintln!("limit must be an unsigned integer");
+                        return Ok(2);
+                    }
+                };
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+        index += if option == "--limit" || option == "--repo" || option == "--query" {
+            2
+        } else {
+            1
+        };
+    }
+    let Some(repository) = repository else {
+        eprintln!("usage: herdr task github-search --repo OWNER/REPO [--query TEXT] [--limit N]");
+        return Ok(2);
+    };
+    super::runtime::github_issue_search(GitHubIssueSearchParams {
+        repository,
+        query,
+        limit,
+    })
+}
+
+fn github_create(args: &[String]) -> std::io::Result<i32> {
+    let mut repository = None;
+    let mut number = None;
+    let mut project_id = None;
+    let mut location = TaskLocationMode::Repository;
+    let mut branch = None;
+    let mut worktree_path = None;
+    let mut prompt = None;
+    let mut index = 0;
+    while index < args.len() {
+        let option = args[index].as_str();
+        match option {
+            "--repo" => repository = option_value(args, index, option),
+            "--number" => {
+                let Some(value) = option_value(args, index, option) else {
+                    return Ok(2);
+                };
+                number = match value.parse::<u64>() {
+                    Ok(value) => Some(value),
+                    Err(_) => {
+                        eprintln!("number must be an unsigned integer");
+                        return Ok(2);
+                    }
+                };
+            }
+            "--project" => project_id = option_value(args, index, option),
+            "--location" => {
+                let Some(value) = option_value(args, index, option) else {
+                    return Ok(2);
+                };
+                location = match value.as_str() {
+                    "repository" => TaskLocationMode::Repository,
+                    "worktree" => TaskLocationMode::Worktree,
+                    _ => {
+                        eprintln!("location must be repository or worktree");
+                        return Ok(2);
+                    }
+                };
+            }
+            "--branch" => branch = option_value(args, index, option),
+            "--worktree-path" => worktree_path = option_value(args, index, option),
+            "--prompt" => prompt = option_value(args, index, option),
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+        if matches!(
+            option,
+            "--repo"
+                | "--number"
+                | "--project"
+                | "--location"
+                | "--branch"
+                | "--worktree-path"
+                | "--prompt"
+        ) {
+            if args.get(index + 1).is_none() {
+                eprintln!("missing value for {option}");
+                return Ok(2);
+            }
+            index += 2;
+        } else {
+            index += 1;
+        }
+    }
+    let (Some(repository), Some(number), Some(project_id)) = (repository, number, project_id)
+    else {
+        eprintln!(
+            "usage: herdr task github-create --repo OWNER/REPO --number N --project ID [OPTIONS]"
+        );
+        return Ok(2);
+    };
+    super::runtime::github_issue_create(GitHubIssueTaskCreateParams {
+        repository,
+        number,
+        project_id,
+        location,
+        branch,
+        worktree_path,
+        prompt,
+    })
+}
 
 fn print_task_help() {
     println!("herdr task — manage durable agent tasks");
@@ -417,4 +557,7 @@ fn print_task_help() {
     println!("  close <task_id>");
     println!("  diff <task_id> [--base REF] [--split|--unified]");
     println!("  write <task_id> --path PATH --content TEXT");
+    println!("  git <task_id> <stage|unstage|commit|push|pr> [OPTIONS]");
+    println!("  github-search --repo OWNER/REPO [--query TEXT] [--limit N]");
+    println!("  github-create --repo OWNER/REPO --number N --project ID [OPTIONS]");
 }

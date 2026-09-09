@@ -696,6 +696,223 @@ impl App {
             },
         )
     }
+    pub(super) fn handle_github_issue_search(
+        &mut self,
+        id: String,
+        params: crate::api::schema::GitHubIssueSearchParams,
+    ) -> String {
+        let repository = params.repository.trim();
+        if repository.is_empty() || repository.chars().any(char::is_control) {
+            return encode_error(id, "invalid_params", "GitHub repository is required");
+        }
+        let mut args = vec![
+            "issue".to_owned(),
+            "list".to_owned(),
+            "--repo".to_owned(),
+            repository.to_owned(),
+            "--state".to_owned(),
+            "all".to_owned(),
+            "--limit".to_owned(),
+            params.limit.unwrap_or(50).clamp(1, 100).to_string(),
+            "--json".to_owned(),
+            "number,title,url,state,labels,assignees".to_owned(),
+        ];
+        if let Some(query) = params.query.filter(|query| !query.trim().is_empty()) {
+            if query.chars().any(char::is_control) {
+                return encode_error(id, "invalid_params", "GitHub search text is invalid");
+            }
+            args.extend(["--search".to_owned(), query]);
+        }
+        let current_dir = match std::env::current_dir() {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(id, "github_auth_failed", err.to_string());
+            }
+        };
+        let output = match run_gh(&current_dir, &args) {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "github_auth_failed", message),
+        };
+        let values = match serde_json::from_str::<Vec<serde_json::Value>>(&output) {
+            Ok(values) => values,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "github_response_invalid",
+                    format!("GitHub returned invalid issue data: {err}"),
+                )
+            }
+        };
+        let issues = values
+            .iter()
+            .filter_map(|value| github_issue_from_value(repository, value).ok())
+            .collect();
+        encode_success(id, ResponseResult::GitHubIssueList { issues })
+    }
+
+    pub(super) fn handle_github_issue_create(
+        &mut self,
+        id: String,
+        params: crate::api::schema::GitHubIssueTaskCreateParams,
+    ) -> String {
+        let repository = params.repository.trim();
+        if repository.is_empty() || repository.chars().any(char::is_control) || params.number == 0 {
+            return encode_error(
+                id,
+                "invalid_params",
+                "GitHub repository and issue number are required",
+            );
+        }
+        let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
+            return project_not_found(id, &params.project_id);
+        };
+        let current_dir = match std::env::current_dir() {
+            Ok(path) => path,
+            Err(err) => return encode_error(id, "github_auth_failed", err.to_string()),
+        };
+        let output = match run_gh(
+            &current_dir,
+            &[
+                "issue".to_owned(),
+                "view".to_owned(),
+                params.number.to_string(),
+                "--repo".to_owned(),
+                repository.to_owned(),
+                "--json".to_owned(),
+                "number,title,body,url,state,labels,assignees".to_owned(),
+            ],
+        ) {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "github_auth_failed", message),
+        };
+        let value = match serde_json::from_str::<serde_json::Value>(&output) {
+            Ok(value) => value,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "github_response_invalid",
+                    format!("GitHub returned invalid issue data: {err}"),
+                )
+            }
+        };
+        let issue = match github_issue_from_value(repository, &value) {
+            Ok(issue) => issue,
+            Err(message) => return encode_error(id, "github_response_invalid", message),
+        };
+        let worktree_path = match params.location {
+            TaskLocationMode::Repository => None,
+            TaskLocationMode::Worktree => {
+                let Some(path) = params.worktree_path.as_deref() else {
+                    return encode_error(
+                        id,
+                        "invalid_params",
+                        "worktree tasks require an existing worktree path",
+                    );
+                };
+                let path = match std::fs::canonicalize(path) {
+                    Ok(path) if path.is_dir() => path,
+                    Ok(_) => {
+                        return encode_error(
+                            id,
+                            "invalid_params",
+                            "task worktree path must be a directory",
+                        )
+                    }
+                    Err(err) => {
+                        return encode_error(id, "invalid_params", err.to_string());
+                    }
+                };
+                Some(path)
+            }
+        };
+        let provider = match project.default_agent.clone() {
+            Some(provider) => match crate::project::normalize_agent_provider(&provider) {
+                Ok(provider) => Some(provider),
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => None,
+        };
+        let context = format!(
+            "GitHub Issue #{}: {}\n\n{}\n\nURL: {}\nState: {}\nLabels: {}\nAssignees: {}",
+            issue.number,
+            issue.title,
+            issue.body,
+            issue.url,
+            issue.state,
+            issue.labels.join(", "),
+            issue.assignees.join(", "),
+        );
+        let prompt = params
+            .prompt
+            .filter(|prompt| !prompt.trim().is_empty())
+            .map_or_else(
+                || context.clone(),
+                |prompt| format!("{context}\n\n{prompt}"),
+            );
+        let task = Task::new(
+            params.project_id,
+            issue.title.clone(),
+            params.location,
+            clean_optional(params.branch),
+            worktree_path,
+            provider,
+            None,
+            Some(prompt),
+            project.environment.clone(),
+            None,
+            None,
+            None,
+        );
+        let issue_context = crate::task::GitHubIssueContext {
+            repository: issue.repository.clone(),
+            number: issue.number,
+            title: issue.title.clone(),
+            body: issue.body.clone(),
+            url: issue.url.clone(),
+            labels: issue.labels.clone(),
+            assignees: issue.assignees.clone(),
+            state: issue.state.clone(),
+        };
+        let mut task = task;
+        task.github_issue = Some(issue_context);
+        let previous = self.state.tasks.clone();
+        self.state.tasks.insert(task.clone());
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return encode_error(id, "task_save_failed", err.to_string());
+        }
+        let task_id = task.id.clone();
+        if task.location == TaskLocationMode::Worktree {
+            if let Err(err) = self.run_task_lifecycle(&task_id) {
+                tracing::warn!(task_id, error = %err, "GitHub issue task lifecycle failed");
+            } else if let Err(err) = self.transition_task(
+                &task_id,
+                TaskStatus::ReviewReady,
+                Some("GitHub issue task ready".to_owned()),
+            ) {
+                tracing::warn!(task_id, error = %err, "GitHub issue task status update failed");
+            }
+        } else if let Err(err) = self.transition_task(
+            &task_id,
+            TaskStatus::ReviewReady,
+            Some("GitHub issue task ready".to_owned()),
+        ) {
+            tracing::warn!(task_id, error = %err, "GitHub issue task status update failed");
+        }
+        let task = self
+            .state
+            .tasks
+            .find(&task_id)
+            .expect("saved GitHub issue task should remain available");
+        encode_success(
+            id,
+            ResponseResult::GitHubIssueTaskCreated {
+                task: self.task_info(task),
+                issue,
+            },
+        )
+    }
+
     pub(super) fn handle_task_diff(
         &mut self,
         id: String,
@@ -1115,6 +1332,18 @@ impl App {
                 })
                 .collect(),
             pull_request_url: task.pull_request_url.clone(),
+            github_issue: task.github_issue.as_ref().map(|issue| {
+                crate::api::schema::GitHubIssueInfo {
+                    repository: issue.repository.clone(),
+                    number: issue.number,
+                    title: issue.title.clone(),
+                    body: issue.body.clone(),
+                    url: issue.url.clone(),
+                    labels: issue.labels.clone(),
+                    assignees: issue.assignees.clone(),
+                    state: issue.state.clone(),
+                }
+            }),
             status: task.status,
             current_step: task.current_step.clone(),
             agent_status: task.agent_status,
@@ -1270,6 +1499,68 @@ fn task_environment(
     }
     environment
 }
+fn github_issue_from_value(
+    repository: &str,
+    value: &serde_json::Value,
+) -> Result<crate::api::schema::GitHubIssueInfo, String> {
+    let number = value
+        .get("number")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| "GitHub issue response has no number".to_owned())?;
+    let title = value
+        .get("title")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "GitHub issue response has no title".to_owned())?
+        .to_owned();
+    let body = value
+        .get("body")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_owned();
+    let url = value
+        .get("url")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "GitHub issue response has no URL".to_owned())?
+        .to_owned();
+    let state = value
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("UNKNOWN")
+        .to_owned();
+    let labels = value
+        .get("labels")
+        .and_then(serde_json::Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|label| label.get("name").and_then(serde_json::Value::as_str))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let assignees = value
+        .get("assignees")
+        .and_then(serde_json::Value::as_array)
+        .map(|assignees| {
+            assignees
+                .iter()
+                .filter_map(|assignee| assignee.get("login").and_then(serde_json::Value::as_str))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(crate::api::schema::GitHubIssueInfo {
+        repository: repository.to_owned(),
+        number,
+        title,
+        body,
+        url,
+        labels,
+        assignees,
+        state,
+    })
+}
+
 fn run_task_git(worktree_path: &std::path::Path, args: &[&str]) -> Result<String, String> {
     let args = args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
     run_task_program("git", worktree_path, &args)

@@ -287,6 +287,24 @@ fn task_command() -> Command {
                 .arg(option("body", "BODY"))
                 .arg(option("base", "BRANCH")),
         )
+        .subcommand(
+            Command::new("github-search")
+                .about("Search GitHub issues")
+                .arg(option("repo", "OWNER/REPO").required(true))
+                .arg(option("query", "TEXT"))
+                .arg(option("limit", "N")),
+        )
+        .subcommand(
+            Command::new("github-create")
+                .about("Create a task from a GitHub issue")
+                .arg(option("repo", "OWNER/REPO").required(true))
+                .arg(option("number", "N").required(true))
+                .arg(option("project", "PROJECT_ID").required(true))
+                .arg(option("location", "repository|worktree"))
+                .arg(option("branch", "BRANCH"))
+                .arg(path_option("worktree-path", "PATH"))
+                .arg(option("prompt", "PROMPT")),
+        )
 }
 
 fn workspace_command() -> Command {

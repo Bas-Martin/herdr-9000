@@ -46,6 +46,7 @@ pub(crate) fn request_changes_ui(request: &Request) -> bool {
             | Method::TaskClose(_)
             | Method::TaskFileWrite(_)
             | Method::TaskGitAction(_)
+            | Method::TaskGitHubCreate(_)
             | Method::WorktreeCreate(_)
             | Method::WorktreeOpen(_)
             | Method::WorktreeRemove(_)

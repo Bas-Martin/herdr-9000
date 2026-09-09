@@ -55,6 +55,17 @@ pub(crate) struct TaskHistoryEntry {
     pub(crate) at: u64,
     pub(crate) reason: Option<String>,
 }
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) struct GitHubIssueContext {
+    pub(crate) repository: String,
+    pub(crate) number: u64,
+    pub(crate) title: String,
+    pub(crate) body: String,
+    pub(crate) url: String,
+    pub(crate) labels: Vec<String>,
+    pub(crate) assignees: Vec<String>,
+    pub(crate) state: String,
+}
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
@@ -110,6 +121,8 @@ pub(crate) struct Task {
     pub(crate) lifecycle_runs: Vec<TaskLifecycleRun>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) pull_request_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) github_issue: Option<GitHubIssueContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) current_step: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -193,6 +206,7 @@ impl Task {
             agent_session: None,
             lifecycle_runs: Vec::new(),
             pull_request_url: None,
+            github_issue: None,
             current_step: None,
             agent_status: None,
             history: vec![TaskHistoryEntry {

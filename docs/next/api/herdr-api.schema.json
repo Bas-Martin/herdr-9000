@@ -2152,6 +2152,74 @@
           ],
           "type": "object"
         },
+        "GitHubIssueSearchParams": {
+          "properties": {
+            "limit": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "query": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "repository": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository"
+          ],
+          "type": "object"
+        },
+        "GitHubIssueTaskCreateParams": {
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "location": {
+              "$ref": "#/schemas/request/$defs/TaskLocationMode",
+              "default": "repository"
+            },
+            "number": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "repository": {
+              "type": "string"
+            },
+            "worktree_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "repository",
+            "number",
+            "project_id"
+          ],
+          "type": "object"
+        },
         "IntegrationInstallParams": {
           "properties": {
             "target": {
@@ -5815,6 +5883,38 @@
         {
           "properties": {
             "method": {
+              "const": "task.github_search",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/GitHubIssueSearchParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.github_create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/GitHubIssueTaskCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "worktree.list",
               "type": "string"
             },
@@ -8246,6 +8346,53 @@
           ],
           "type": "string"
         },
+        "GitHubIssueInfo": {
+          "properties": {
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "number": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "number",
+            "title",
+            "body",
+            "url",
+            "labels",
+            "assignees",
+            "state"
+          ],
+          "type": "object"
+        },
         "InstalledPluginInfo": {
           "properties": {
             "actions": {
@@ -10335,6 +10482,45 @@
             },
             {
               "properties": {
+                "issues": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/GitHubIssueInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "git_hub_issue_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "issues"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "issue": {
+                  "$ref": "#/schemas/success_response/$defs/GitHubIssueInfo"
+                },
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "git_hub_issue_task_created",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task",
+                "issue"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "source": {
                   "$ref": "#/schemas/success_response/$defs/WorktreeSourceInfo"
                 },
@@ -11964,6 +12150,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "github_issue": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/GitHubIssueInfo"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "history": {

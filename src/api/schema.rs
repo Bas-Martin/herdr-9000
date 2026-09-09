@@ -5,6 +5,7 @@ pub mod commands;
 pub mod common;
 pub mod diffs;
 pub mod events;
+pub mod github;
 pub mod integrations;
 pub mod panes;
 pub mod plugins;
@@ -22,6 +23,7 @@ pub use commands::*;
 pub use common::*;
 pub use diffs::*;
 pub use events::*;
+pub use github::*;
 pub use integrations::*;
 pub use panes::*;
 pub use plugins::*;
@@ -127,6 +129,10 @@ pub enum Method {
     TaskFileWrite(TaskFileWriteParams),
     #[serde(rename = "task.git_action")]
     TaskGitAction(TaskGitActionParams),
+    #[serde(rename = "task.github_search")]
+    TaskGitHubSearch(GitHubIssueSearchParams),
+    #[serde(rename = "task.github_create")]
+    TaskGitHubCreate(GitHubIssueTaskCreateParams),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

@@ -106,6 +106,8 @@ pub struct TaskInfo {
     pub lifecycle_runs: Vec<TaskLifecycleRunInfo>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pull_request_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github_issue: Option<super::github::GitHubIssueInfo>,
     pub status: TaskStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_step: Option<String>,

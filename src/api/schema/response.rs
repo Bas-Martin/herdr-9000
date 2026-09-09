@@ -4,6 +4,7 @@ use super::agents::AgentInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
 use super::diffs::{TaskDiffInfo, TaskFileWrittenInfo, TaskGitActionInfo};
 use super::events::EventEnvelope;
+use super::github::GitHubIssueInfo;
 use super::integrations::{
     IntegrationInstallResult, IntegrationTarget, IntegrationUninstallResult,
 };
@@ -110,6 +111,13 @@ pub enum ResponseResult {
     },
     TaskGitAction {
         action: TaskGitActionInfo,
+    },
+    GitHubIssueList {
+        issues: Vec<GitHubIssueInfo>,
+    },
+    GitHubIssueTaskCreated {
+        task: TaskInfo,
+        issue: GitHubIssueInfo,
     },
     WorktreeList {
         source: WorktreeSourceInfo,
