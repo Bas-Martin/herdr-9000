@@ -12,13 +12,16 @@ const INVALID_AGENT_TIMEOUT_MESSAGE: &str =
     "agent start timeout must be greater than 3000ms and at most 300000ms";
 const INVALID_AGENT_NAME_MESSAGE: &str = "agent name must start with a lowercase letter and contain only lowercase letters, digits, '-' or '_' (1-32 characters)";
 
-fn valid_agent_name(name: &str) -> bool {
+pub(crate) fn valid_agent_name(name: &str) -> bool {
     let mut chars = name.chars();
     matches!(chars.next(), Some('a'..='z'))
         && name.len() <= 32
         && chars.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '-' | '_'))
 }
-fn valid_agent_environment(environment: &std::collections::BTreeMap<String, String>) -> bool {
+
+pub(crate) fn valid_agent_environment(
+    environment: &std::collections::BTreeMap<String, String>,
+) -> bool {
     environment.iter().all(|(name, value)| {
         !name.is_empty()
             && name.len() <= 128
@@ -31,7 +34,7 @@ fn valid_agent_environment(environment: &std::collections::BTreeMap<String, Stri
                 .all(|character| character.is_ascii_alphanumeric() || character == '_')
             && value.len() <= 32768
             && !value.chars().any(char::is_control)
-            && !value.contains('"')
+            && !value.contains('\"')
     })
 }
 

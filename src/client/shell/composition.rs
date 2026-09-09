@@ -583,6 +583,7 @@ impl ClientShellState {
                 self.hits.worktree_branch = rendered.worktree_branch;
                 self.hits.worktree_rows = rendered.worktree_rows;
                 self.hits.task_rows = rendered.task_rows;
+                self.hits.tmux_rows = rendered.tmux_rows;
                 self.hits.task_editor_path = rendered.task_editor_path;
                 self.hits.task_editor_content = rendered.task_editor_content;
                 self.hits.task_editor_save = rendered.task_editor_save;

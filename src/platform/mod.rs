@@ -237,7 +237,13 @@ mod unix_common;
 pub(crate) use unix_common::{begin_cli_output, end_cli_output};
 
 mod client_state;
+mod tmux;
 pub(crate) use client_state::{create_private_state_file, replace_file, sync_parent_directory};
+pub(crate) use tmux::{
+    capture_pane as capture_tmux_pane, focus_pane as focus_tmux_pane, kill_pane as kill_tmux_pane,
+    list_panes as list_tmux_panes, send_keys as send_tmux_keys, spawn_pane as spawn_tmux_pane,
+    PaneSnapshot as TmuxPaneSnapshot,
+};
 
 #[cfg(not(unix))]
 pub(crate) fn begin_cli_output() {}

@@ -647,6 +647,9 @@ impl ClientShellState {
                 | PendingEndpointKind::TaskOpen { .. }
                 | PendingEndpointKind::TaskFileRead
                 | PendingEndpointKind::TaskFileWrite
+                | PendingEndpointKind::TmuxList
+                | PendingEndpointKind::TmuxCapture
+                | PendingEndpointKind::TmuxAction
                 | PendingEndpointKind::ProjectCreate
                 | PendingEndpointKind::ProjectUpdate,
                 Err(_),

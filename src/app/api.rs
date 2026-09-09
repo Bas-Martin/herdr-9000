@@ -15,6 +15,7 @@ pub(super) mod responses;
 mod session;
 mod tabs;
 mod tasks;
+mod tmux;
 mod workspaces;
 mod worktrees;
 
@@ -1164,6 +1165,9 @@ impl App {
                 return self.handle_agent_view_clear(request.id, params)
             }
             Method::AgentStart(params) => return self.handle_agent_start(request.id, params),
+            Method::AgentStartTmux(params) => {
+                return self.handle_agent_start_tmux(request.id, params)
+            }
             Method::AgentPrompt(_) => {
                 return responses::encode_error(
                     request.id,
@@ -1183,6 +1187,13 @@ impl App {
             Method::AgentSendKeys(params) => {
                 return self.handle_agent_send_keys(request.id, params)
             }
+            Method::TmuxPaneList(_) => return self.handle_tmux_list(request.id),
+            Method::TmuxPaneCapture(params) => return self.handle_tmux_capture(request.id, params),
+            Method::TmuxPaneSendKeys(params) => {
+                return self.handle_tmux_send_keys(request.id, params)
+            }
+            Method::TmuxPaneKill(target) => return self.handle_tmux_kill(request.id, target),
+            Method::TmuxPaneFocus(target) => return self.handle_tmux_focus(request.id, target),
             Method::PaneSplit(params) => return self.handle_pane_split(request.id, params),
             Method::PaneSwap(params) => return self.handle_pane_swap(request.id, params),
             Method::PaneMove(params) => return self.handle_pane_move(request.id, params),

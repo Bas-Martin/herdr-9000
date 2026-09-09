@@ -190,6 +190,7 @@ pub(super) struct ShellHitMap {
     pub(super) worktree_search: Rect,
     pub(super) worktree_rows: Vec<(Rect, usize)>,
     pub(super) task_rows: Vec<(Rect, usize)>,
+    pub(super) tmux_rows: Vec<(Rect, usize)>,
     pub(super) task_editor_path: Rect,
     pub(super) task_editor_content: Rect,
     pub(super) task_editor_save: Rect,
@@ -361,6 +362,7 @@ pub(super) enum ClientShellOverlayKind {
     ProjectPatterns,
     TaskBrowser,
     TaskFileEditor,
+    TmuxPanes,
 }
 
 #[derive(Debug)]
@@ -717,6 +719,16 @@ pub(super) struct ClientTaskBrowserOverlay {
     pub(super) opening: bool,
     pub(super) error: Option<String>,
 }
+#[derive(Debug)]
+pub(super) struct ClientTmuxPaneOverlay {
+    pub(super) panes: Vec<crate::api::schema::TmuxPaneInfo>,
+    pub(super) selected: usize,
+    pub(super) watching: bool,
+    pub(super) output: String,
+    pub(super) loading: bool,
+    pub(super) pending: bool,
+    pub(super) error: Option<String>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ClientTaskFileEditorField {
@@ -755,6 +767,7 @@ pub(super) enum ClientShellOverlay {
     GlobalMenu(ClientGlobalMenuOverlay),
     TaskBrowser(ClientTaskBrowserOverlay),
     TaskFileEditor(ClientTaskFileEditorOverlay),
+    TmuxPanes(ClientTmuxPaneOverlay),
     Settings(ClientSettingsOverlay),
 }
 
@@ -777,6 +790,7 @@ impl ClientShellOverlay {
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
             Self::TaskBrowser(_) => ClientShellOverlayKind::TaskBrowser,
             Self::TaskFileEditor(_) => ClientShellOverlayKind::TaskFileEditor,
+            Self::TmuxPanes(_) => ClientShellOverlayKind::TmuxPanes,
             Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
         }
@@ -849,6 +863,9 @@ pub(super) enum PendingEndpointKind {
         endpoint_id: ClientEndpointId,
     },
     TaskFileRead,
+    TmuxList,
+    TmuxCapture,
+    TmuxAction,
     TaskFileWrite,
     ProjectCreate,
     ProjectUpdate,
@@ -1090,6 +1107,7 @@ pub(crate) struct ClientShellState {
     pub(super) popup_pending: bool,
     pub(super) popup_pending_deadline: Option<std::time::Instant>,
     pub(super) next_request_id: u64,
+    pub(super) tmux_next_refresh: Option<std::time::Instant>,
     pub(super) pending_requests: HashMap<String, PendingEndpointRequest>,
     pub(super) pending_integration_installs: usize,
     pub(super) pending_notifications: Vec<ClientPendingNotification>,
@@ -1233,6 +1251,7 @@ impl ClientShellState {
             popup_pending: false,
             popup_pending_deadline: None,
             next_request_id: 1,
+            tmux_next_refresh: None,
             pending_requests: HashMap::new(),
             pending_integration_installs: 0,
             pending_notifications: Vec::new(),
@@ -1906,9 +1925,13 @@ impl ClientShellState {
 
     pub(crate) fn timer_delay(&self, now: std::time::Instant) -> std::time::Duration {
         let default = std::time::Duration::from_millis(100);
-        self.selection_autoscroll_deadline
+        let selection_delay = self
+            .selection_autoscroll_deadline
             .map(|deadline| deadline.saturating_duration_since(now).min(default))
-            .unwrap_or(default)
+            .unwrap_or(default);
+        self.tmux_next_refresh
+            .map(|deadline| selection_delay.min(deadline.saturating_duration_since(now)))
+            .unwrap_or(selection_delay)
     }
 
     pub(crate) fn invalidate_pane_surface(&mut self) {

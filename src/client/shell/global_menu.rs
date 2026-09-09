@@ -4,6 +4,7 @@ use super::*;
 pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
     TaskBrowser,
+    TmuxPanes,
     WhatsNew,
 }
 
@@ -52,6 +53,7 @@ pub(super) fn global_menu_items(
         ClientGlobalMenuAction::Binding(crate::input::KeybindAction::Detach),
     ));
     items.push(("tasks", ClientGlobalMenuAction::TaskBrowser));
+    items.push(("tmux panes", ClientGlobalMenuAction::TmuxPanes));
     items
 }
 
@@ -107,6 +109,7 @@ impl ClientShellState {
             }
             ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
             ClientGlobalMenuAction::TaskBrowser => self.open_task_browser(outcome),
+            ClientGlobalMenuAction::TmuxPanes => self.open_tmux_panes(outcome),
         }
         outcome.repaint = true;
     }

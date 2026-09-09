@@ -19,6 +19,7 @@ pub mod server;
 pub mod session;
 pub mod tabs;
 pub mod tasks;
+pub mod tmux;
 pub mod workspaces;
 pub mod worktrees;
 
@@ -41,6 +42,7 @@ pub use server::*;
 pub use session::*;
 pub use tabs::*;
 pub use tasks::*;
+pub use tmux::*;
 pub use workspaces::*;
 pub use worktrees::*;
 
@@ -211,10 +213,22 @@ pub enum Method {
     AgentViewClear(AgentViewClearParams),
     #[serde(rename = "agent.focus")]
     AgentFocus(AgentTarget),
+    #[serde(rename = "agent.start_tmux")]
+    AgentStartTmux(TmuxAgentStartParams),
     #[serde(rename = "agent.start")]
     AgentStart(AgentStartParams),
     #[serde(rename = "agent.prompt")]
     AgentPrompt(AgentPromptParams),
+    #[serde(rename = "tmux.list")]
+    TmuxPaneList(EmptyParams),
+    #[serde(rename = "tmux.capture")]
+    TmuxPaneCapture(TmuxPaneCaptureParams),
+    #[serde(rename = "tmux.send_keys")]
+    TmuxPaneSendKeys(TmuxPaneSendKeysParams),
+    #[serde(rename = "tmux.kill")]
+    TmuxPaneKill(TmuxPaneTarget),
+    #[serde(rename = "tmux.focus")]
+    TmuxPaneFocus(TmuxPaneTarget),
     #[serde(rename = "agent.wait")]
     AgentWait(AgentWaitParams),
     #[serde(rename = "pane.split")]

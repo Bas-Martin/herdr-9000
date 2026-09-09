@@ -13,6 +13,7 @@ impl ClientShellState {
                     | ClientShellOverlay::GlobalMenu(_)
                     | ClientShellOverlay::TaskBrowser(_)
                     | ClientShellOverlay::TaskFileEditor(_)
+                    | ClientShellOverlay::TmuxPanes(_)
             );
         }
         matches!(

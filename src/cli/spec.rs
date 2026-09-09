@@ -45,6 +45,7 @@ pub(super) fn command() -> Command {
         .subcommand(resource_command())
         .subcommand(automation_command())
         .subcommand(agent_command())
+        .subcommand(tmux_command())
         .subcommand(pane_command())
         .subcommand(terminal_command())
         .subcommand(session_command())
@@ -529,6 +530,34 @@ fn notification_command() -> Command {
         )
 }
 
+fn tmux_command() -> Command {
+    Command::new("tmux")
+        .about("Manage tmux panes used by Herdr subagents")
+        .subcommand(Command::new("list").about("List tmux panes"))
+        .subcommand(
+            Command::new("capture")
+                .about("Capture tmux pane output")
+                .arg(required("pane_id", "PANE_ID"))
+                .arg(option("lines", "N")),
+        )
+        .subcommand(
+            Command::new("send-keys")
+                .about("Send key names to a tmux pane")
+                .arg(required("pane_id", "PANE_ID"))
+                .arg(required("key", "KEY").num_args(1..)),
+        )
+        .subcommand(
+            Command::new("kill")
+                .about("Close a Herdr-managed tmux pane")
+                .arg(required("pane_id", "PANE_ID")),
+        )
+        .subcommand(
+            Command::new("focus")
+                .about("Focus a tmux pane")
+                .arg(required("pane_id", "PANE_ID")),
+        )
+}
+
 fn agent_command() -> Command {
     Command::new("agent")
         .about("Control and inspect agent panes")
@@ -608,17 +637,10 @@ fn agent_command() -> Command {
                 ),
         )
         .subcommand(
-            Command::new("attach")
-                .about("Attach directly to an agent terminal")
-                .override_usage("herdr agent attach <TARGET> [OPTIONS]")
-                .arg(required("target", "TARGET"))
-                .arg(flag("takeover")),
-        )
-        .subcommand(
             Command::new("start")
-                .about("Start a supported interactive agent in an existing pane")
+                .about("Start a supported interactive agent in an existing or tmux pane")
                 .override_usage(
-                    "herdr agent start <NAME> --kind <KIND> --pane <ID> [OPTIONS] [-- [AGENT_ARG]...]",
+                    "herdr agent start <NAME> --kind <KIND> [--pane <ID>|--tmux] [OPTIONS] [-- [AGENT_ARG]...]",
                 )
                 .arg(required("name", "NAME"))
                 .arg(
@@ -629,9 +651,11 @@ fn agent_command() -> Command {
                 )
                 .arg(
                     option("pane", "ID")
-                        .required(true)
-                        .help("Existing pane at an interactive shell prompt"),
+                        .help("Existing Herdr pane at an interactive shell prompt"),
                 )
+                .arg(flag("tmux").help("Spawn the agent in a new tmux pane"))
+                .arg(option("target", "ID").help("tmux pane to split from"))
+                .arg(path_option("cwd", "PATH").help("Working directory for the tmux pane"))
                 .arg(
                     option("timeout", "MS")
                         .help("Wait for interactive readiness (default: 30000; max: 300000)"),
@@ -643,7 +667,7 @@ fn agent_command() -> Command {
                         .last(true),
                 )
                 .after_help(
-                    "The pane must be at its interactive shell prompt. Success means the expected agent was detected in the same terminal and is ready for input.\n\nnext: herdr agent prompt <TARGET> <TEXT> --wait",
+                    "The pane must be at its interactive shell prompt for the normal mode. With --tmux, Herdr creates a separate tmux pane and reconnects it after restart.\n\nnext: herdr agent prompt <TARGET> <TEXT> --wait",
                 ),
         )
         .subcommand(

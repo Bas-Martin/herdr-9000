@@ -797,6 +797,324 @@ impl ClientShellState {
         self.request_task_browser(outcome);
     }
 
+    pub(super) fn open_tmux_panes(&mut self, outcome: &mut ClientShellInput) {
+        self.overlay = Some(ClientShellOverlay::TmuxPanes(ClientTmuxPaneOverlay {
+            panes: Vec::new(),
+            selected: 0,
+            watching: false,
+            output: String::new(),
+            loading: false,
+            pending: false,
+            error: None,
+        }));
+        self.tmux_next_refresh =
+            Some(std::time::Instant::now() + std::time::Duration::from_secs(1));
+        self.request_tmux_list(outcome);
+    }
+
+    fn request_tmux_list(&mut self, outcome: &mut ClientShellInput) {
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            if overlay.pending {
+                return;
+            }
+            overlay.loading = true;
+            overlay.pending = true;
+            overlay.error = None;
+        } else {
+            return;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneList(crate::api::schema::EmptyParams::default()),
+            PendingEndpointKind::TmuxList,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                overlay.loading = false;
+                overlay.pending = false;
+                overlay.error = Some("tmux is unavailable on this endpoint".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    fn request_tmux_capture(&mut self, outcome: &mut ClientShellInput) {
+        let Some(pane_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TmuxPanes(overlay) if overlay.watching && !overlay.pending => {
+                overlay
+                    .panes
+                    .get(overlay.selected)
+                    .map(|pane| pane.pane_id.clone())
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            overlay.pending = true;
+            overlay.error = None;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneCapture(
+                crate::api::schema::TmuxPaneCaptureParams {
+                    pane_id,
+                    lines: 200,
+                },
+            ),
+            PendingEndpointKind::TmuxCapture,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                overlay.pending = false;
+                overlay.error = Some("tmux capture is unavailable".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    pub(super) fn open_selected_tmux_pane(&mut self, outcome: &mut ClientShellInput) {
+        let Some(pane_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TmuxPanes(overlay)
+                if !overlay.loading && !overlay.panes.is_empty() =>
+            {
+                overlay
+                    .panes
+                    .get(overlay.selected)
+                    .map(|pane| pane.pane_id.clone())
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            overlay.watching = true;
+            overlay.output.clear();
+            overlay.error = None;
+            overlay.pending = false;
+        }
+        self.request_tmux_capture_for(pane_id, outcome);
+    }
+
+    fn request_tmux_capture_for(&mut self, pane_id: String, outcome: &mut ClientShellInput) {
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            if overlay.pending {
+                return;
+            }
+            overlay.pending = true;
+        } else {
+            return;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneCapture(
+                crate::api::schema::TmuxPaneCaptureParams {
+                    pane_id,
+                    lines: 200,
+                },
+            ),
+            PendingEndpointKind::TmuxCapture,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                overlay.pending = false;
+                overlay.error = Some("tmux capture is unavailable".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    fn send_tmux_interrupt(&mut self, outcome: &mut ClientShellInput) {
+        let Some(pane_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TmuxPanes(overlay) if !overlay.panes.is_empty() => overlay
+                .panes
+                .get(overlay.selected)
+                .map(|pane| pane.pane_id.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let _ = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneSendKeys(
+                crate::api::schema::TmuxPaneSendKeysParams {
+                    pane_id,
+                    keys: vec!["C-c".to_owned()],
+                },
+            ),
+            PendingEndpointKind::TmuxAction,
+            outcome,
+        );
+    }
+
+    fn focus_selected_tmux_pane(&mut self, outcome: &mut ClientShellInput) {
+        let Some(pane_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TmuxPanes(overlay) => overlay
+                .panes
+                .get(overlay.selected)
+                .map(|pane| pane.pane_id.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let _ = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneFocus(crate::api::schema::TmuxPaneTarget {
+                pane_id,
+            }),
+            PendingEndpointKind::TmuxAction,
+            outcome,
+        );
+    }
+
+    fn close_selected_tmux_pane(&mut self, outcome: &mut ClientShellInput) {
+        let Some(pane) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TmuxPanes(overlay) => overlay.panes.get(overlay.selected),
+            _ => None,
+        }) else {
+            return;
+        };
+        if !matches!(
+            pane.origin,
+            crate::api::schema::TmuxPaneOrigin::HerdrSubagent
+        ) {
+            if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                overlay.error = Some("external tmux panes cannot be closed from Herdr".to_owned());
+            }
+            outcome.repaint = true;
+            return;
+        }
+        let pane_id = pane.pane_id.clone();
+        let _ = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TmuxPaneKill(crate::api::schema::TmuxPaneTarget {
+                pane_id,
+            }),
+            PendingEndpointKind::TmuxAction,
+            outcome,
+        );
+    }
+
+    pub(crate) fn tick_tmux_panes(
+        &mut self,
+        now: std::time::Instant,
+        outcome: &mut ClientShellInput,
+    ) {
+        if !matches!(self.overlay, Some(ClientShellOverlay::TmuxPanes(_))) {
+            self.tmux_next_refresh = None;
+            return;
+        }
+        let Some(deadline) = self.tmux_next_refresh else {
+            return;
+        };
+        if now < deadline {
+            return;
+        }
+        self.tmux_next_refresh = Some(now + std::time::Duration::from_secs(1));
+        let watching = matches!(
+            self.overlay,
+            Some(ClientShellOverlay::TmuxPanes(ClientTmuxPaneOverlay {
+                watching: true,
+                pending: false,
+                ..
+            }))
+        );
+        if watching {
+            self.request_tmux_capture(outcome);
+        } else if matches!(
+            self.overlay,
+            Some(ClientShellOverlay::TmuxPanes(ClientTmuxPaneOverlay {
+                pending: false,
+                ..
+            }))
+        ) {
+            self.request_tmux_list(outcome);
+        }
+    }
+
+    pub(super) fn handle_tmux_list_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        let (panes, error) = match result {
+            Ok(crate::api::schema::ResponseResult::TmuxPaneList { panes }) => (panes, None),
+            Ok(_) => (Vec::new(), Some("unexpected tmux list response".to_owned())),
+            Err(error) => (Vec::new(), Some(error.message)),
+        };
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            let selected_id = overlay
+                .panes
+                .get(overlay.selected)
+                .map(|pane| pane.pane_id.clone());
+            overlay.panes = panes;
+            overlay.selected = selected_id
+                .and_then(|id| overlay.panes.iter().position(|pane| pane.pane_id == id))
+                .unwrap_or_else(|| overlay.selected.min(overlay.panes.len().saturating_sub(1)));
+            overlay.loading = false;
+            overlay.pending = false;
+            overlay.error = error;
+        }
+        (true, Vec::new())
+    }
+
+    pub(super) fn handle_tmux_capture_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        match result {
+            Ok(crate::api::schema::ResponseResult::TmuxPaneCaptured { pane_id, output }) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    if overlay
+                        .panes
+                        .get(overlay.selected)
+                        .is_some_and(|pane| pane.pane_id == pane_id)
+                    {
+                        overlay.output = output;
+                    }
+                    overlay.pending = false;
+                    overlay.error = None;
+                }
+            }
+            Ok(_) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    overlay.pending = false;
+                    overlay.error = Some("unexpected tmux capture response".to_owned());
+                }
+            }
+            Err(error) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    overlay.pending = false;
+                    overlay.error = Some(error.message);
+                }
+            }
+        }
+        (true, Vec::new())
+    }
+
+    pub(super) fn handle_tmux_action_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        match result {
+            Ok(crate::api::schema::ResponseResult::TmuxPaneAction { .. }) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    overlay.pending = false;
+                    overlay.error = None;
+                }
+            }
+            Ok(_) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    overlay.pending = false;
+                    overlay.error = Some("unexpected tmux action response".to_owned());
+                }
+            }
+            Err(error) => {
+                if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                    overlay.pending = false;
+                    overlay.error = Some(error.message);
+                }
+            }
+        }
+        (true, Vec::new())
+    }
+
     fn request_task_browser(&mut self, outcome: &mut ClientShellInput) {
         let endpoint_ids = self
             .endpoints
@@ -1128,11 +1446,80 @@ impl ClientShellState {
                     ClientTaskFileEditorField::Path => editor.path.clear(),
                     ClientTaskFileEditorField::Content => {
                         editor.content.clear();
+
                         editor.cursor = 0;
                     }
                 }
                 editor.error = None;
             }
+        }
+        outcome.repaint = true;
+        true
+    }
+    pub(super) fn move_tmux_selection(&mut self, delta: isize) {
+        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+            let last = overlay.panes.len().saturating_sub(1);
+            overlay.selected = (overlay.selected as isize + delta).clamp(0, last as isize) as usize;
+        }
+    }
+
+    fn route_tmux_panes_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        if !matches!(self.overlay, Some(ClientShellOverlay::TmuxPanes(_))) {
+            return false;
+        }
+        let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+        match code {
+            KeyCode::Esc if modifiers.is_empty() => {
+                let watching = matches!(
+                    self.overlay,
+                    Some(ClientShellOverlay::TmuxPanes(ClientTmuxPaneOverlay {
+                        watching: true,
+                        ..
+                    }))
+                );
+                if watching {
+                    if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut() {
+                        overlay.watching = false;
+                        overlay.output.clear();
+                        overlay.error = None;
+                    }
+                } else {
+                    self.overlay = None;
+                    self.tmux_next_refresh = None;
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') if modifiers.is_empty() => {
+                self.move_tmux_selection(-1);
+            }
+            KeyCode::Down | KeyCode::Char('j') if modifiers.is_empty() => {
+                self.move_tmux_selection(1);
+            }
+            KeyCode::Enter if modifiers.is_empty() => self.open_selected_tmux_pane(outcome),
+            KeyCode::Char('r') if modifiers.is_empty() => {
+                let watching = matches!(
+                    self.overlay,
+                    Some(ClientShellOverlay::TmuxPanes(ClientTmuxPaneOverlay {
+                        watching: true,
+                        ..
+                    }))
+                );
+                if watching {
+                    self.request_tmux_capture(outcome);
+                } else {
+                    self.request_tmux_list(outcome);
+                }
+            }
+            KeyCode::Char('c') if modifiers == crossterm::event::KeyModifiers::CONTROL => {
+                self.send_tmux_interrupt(outcome)
+            }
+            KeyCode::Char('f') if modifiers.is_empty() => self.focus_selected_tmux_pane(outcome),
+            KeyCode::Char('s') if modifiers.is_empty() => self.send_tmux_interrupt(outcome),
+            KeyCode::Char('x') if modifiers.is_empty() => self.close_selected_tmux_pane(outcome),
+            _ => return true,
         }
         outcome.repaint = true;
         true
@@ -1214,9 +1601,7 @@ impl ClientShellState {
                 self.move_task_browser_selection(1)
             }
             KeyCode::Char('e') if modifiers.is_empty() => self.open_selected_task_editor(),
-            KeyCode::Enter if modifiers.is_empty() => self.open_selected_task(outcome),
-            KeyCode::Char('r') if modifiers.is_empty() => self.request_task_browser(outcome),
-            _ => return true,
+            _ => {}
         }
         outcome.repaint = true;
         true
@@ -1419,6 +1804,9 @@ impl ClientShellState {
         }
 
         if self.route_task_file_editor_key(key, outcome) {
+            return;
+        }
+        if self.route_tmux_panes_key(key, outcome) {
             return;
         }
         if self.route_task_browser_key(key, outcome) {

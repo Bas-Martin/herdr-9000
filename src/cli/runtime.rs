@@ -7,9 +7,10 @@ use crate::api::schema::{
     ResourceCreateParams, ResourceListParams, ResourceTarget, ResourceUpdateParams,
     TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskChecksParams, TaskCreateParams,
     TaskDiffParams, TaskFileReadParams, TaskFileWriteParams, TaskGitActionParams, TaskListParams,
-    TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget, WorkspaceCloseParams,
-    WorkspaceCreateParams, WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams,
-    WorktreeListParams, WorktreeOpenParams, WorktreeRemoveParams,
+    TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget, TmuxAgentStartParams,
+    TmuxPaneSendKeysParams, TmuxPaneTarget, WorkspaceCloseParams, WorkspaceCreateParams,
+    WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams, WorktreeListParams,
+    WorktreeOpenParams, WorktreeRemoveParams,
 };
 
 fn print_method_response(id: &'static str, method: Method) -> std::io::Result<i32> {
@@ -237,4 +238,32 @@ pub(super) fn pane_move(params: PaneMoveParams) -> std::io::Result<i32> {
 
 pub(super) fn pane_close(pane_id: String) -> std::io::Result<i32> {
     print_method_response("cli:pane:close", Method::PaneClose(PaneTarget { pane_id }))
+}
+pub(super) fn tmux_list() -> std::io::Result<i32> {
+    print_method_response(
+        "cli:tmux:list",
+        Method::TmuxPaneList(EmptyParams::default()),
+    )
+}
+
+pub(super) fn tmux_send_keys(params: TmuxPaneSendKeysParams) -> std::io::Result<i32> {
+    print_method_response("cli:tmux:send-keys", Method::TmuxPaneSendKeys(params))
+}
+
+pub(super) fn tmux_kill(pane_id: String) -> std::io::Result<i32> {
+    print_method_response(
+        "cli:tmux:kill",
+        Method::TmuxPaneKill(TmuxPaneTarget { pane_id }),
+    )
+}
+
+pub(super) fn tmux_focus(pane_id: String) -> std::io::Result<i32> {
+    print_method_response(
+        "cli:tmux:focus",
+        Method::TmuxPaneFocus(TmuxPaneTarget { pane_id }),
+    )
+}
+
+pub(super) fn agent_start_tmux(params: TmuxAgentStartParams) -> std::io::Result<i32> {
+    print_method_response("cli:agent:start-tmux", Method::AgentStartTmux(params))
 }

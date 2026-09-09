@@ -5415,6 +5415,91 @@
           ],
           "type": "object"
         },
+        "TmuxAgentStartParams": {
+          "properties": {
+            "args": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cwd": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "environment": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "target": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "TmuxPaneCaptureParams": {
+          "properties": {
+            "lines": {
+              "default": 80,
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pane_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id"
+          ],
+          "type": "object"
+        },
+        "TmuxPaneSendKeysParams": {
+          "properties": {
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pane_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id",
+            "keys"
+          ],
+          "type": "object"
+        },
+        "TmuxPaneTarget": {
+          "properties": {
+            "pane_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id"
+          ],
+          "type": "object"
+        },
         "ToastHerdrPosition": {
           "enum": [
             "top-left",
@@ -6954,6 +7039,22 @@
         {
           "properties": {
             "method": {
+              "const": "agent.start_tmux",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TmuxAgentStartParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "agent.start",
               "type": "string"
             },
@@ -6975,6 +7076,86 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/AgentPromptParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tmux.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/EmptyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tmux.capture",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TmuxPaneCaptureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tmux.send_keys",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TmuxPaneSendKeysParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tmux.kill",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TmuxPaneTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "tmux.focus",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TmuxPaneTarget"
             }
           },
           "required": [
@@ -11984,6 +12165,29 @@
             },
             {
               "properties": {
+                "argv": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "pane": {
+                  "$ref": "#/schemas/success_response/$defs/TmuxPaneInfo"
+                },
+                "type": {
+                  "const": "agent_tmux_started",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "pane",
+                "argv"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "agent": {
                   "$ref": "#/schemas/success_response/$defs/AgentInfo"
                 },
@@ -12014,6 +12218,61 @@
               "required": [
                 "type",
                 "agents"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "panes": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/TmuxPaneInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "tmux_pane_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "panes"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "output": {
+                  "type": "string"
+                },
+                "pane_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "tmux_pane_captured",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "pane_id",
+                "output"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "pane_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "tmux_pane_action",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "pane_id"
               ],
               "type": "object"
             },
@@ -13741,6 +14000,104 @@
             "completed",
             "open",
             "closed"
+          ],
+          "type": "string"
+        },
+        "TmuxPaneInfo": {
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "agent_kind": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "current_command": {
+              "type": "string"
+            },
+            "current_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "dead": {
+              "type": "boolean"
+            },
+            "last_output": {
+              "type": "string"
+            },
+            "origin": {
+              "$ref": "#/schemas/success_response/$defs/TmuxPaneOrigin"
+            },
+            "pane_id": {
+              "type": "string"
+            },
+            "pane_index": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parent_pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "session_id": {
+              "type": "string"
+            },
+            "session_name": {
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/AgentStatus"
+            },
+            "title": {
+              "type": "string"
+            },
+            "window_id": {
+              "type": "string"
+            },
+            "window_index": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "window_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "pane_id",
+            "session_id",
+            "session_name",
+            "window_id",
+            "window_index",
+            "window_name",
+            "pane_index",
+            "title",
+            "current_command",
+            "active",
+            "dead",
+            "origin",
+            "status",
+            "last_output"
+          ],
+          "type": "object"
+        },
+        "TmuxPaneOrigin": {
+          "enum": [
+            "herdr_subagent",
+            "external"
           ],
           "type": "string"
         },

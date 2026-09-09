@@ -1359,6 +1359,39 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::TmuxPanes(_))) {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    self.move_tmux_selection(-1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    self.move_tmux_selection(1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some((_, index)) = self
+                        .hits
+                        .tmux_rows
+                        .iter()
+                        .find(|(rect, _)| super::contains(*rect, point))
+                        .copied()
+                    {
+                        if let Some(ClientShellOverlay::TmuxPanes(overlay)) = self.overlay.as_mut()
+                        {
+                            overlay.selected = index;
+                        }
+                        self.open_selected_tmux_pane(outcome);
+                    } else {
+                        self.overlay = None;
+                        self.tmux_next_refresh = None;
+                        outcome.repaint = true;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if matches!(self.overlay, Some(ClientShellOverlay::TaskBrowser(_))) {
             match mouse.kind {
                 MouseEventKind::ScrollUp => {

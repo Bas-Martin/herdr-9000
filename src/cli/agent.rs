@@ -4,6 +4,7 @@ use crate::api::schema::{
     AgentPromptParams, AgentPromptWaitOptions, AgentReadParams, AgentRenameParams,
     AgentSendKeysParams, AgentStartParams, AgentTarget, AgentWaitParams, EmptyParams, ErrorBody,
     ErrorResponse, Method, PaneProcessInfoParams, PaneTarget, ReadFormat, ReadSource, Request,
+    TmuxAgentStartParams,
 };
 
 const AGENT_START_POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -297,6 +298,9 @@ fn agent_start(args: &[String]) -> std::io::Result<i32> {
         .unwrap_or(args.len());
     let mut kind = None;
     let mut pane_id = None;
+    let mut tmux = false;
+    let mut tmux_target = None;
+    let mut tmux_cwd = None;
     let mut timeout_ms = None;
     let mut index = 1;
     while index < separator {
@@ -315,6 +319,26 @@ fn agent_start(args: &[String]) -> std::io::Result<i32> {
                     return Ok(2);
                 };
                 pane_id = Some(super::normalize_pane_id(value));
+                index += 2;
+            }
+            "--tmux" => {
+                tmux = true;
+                index += 1;
+            }
+            "--target" => {
+                let Some(value) = args.get(index + 1).filter(|_| index + 1 < separator) else {
+                    eprintln!("missing value for --target");
+                    return Ok(2);
+                };
+                tmux_target = Some(value.clone());
+                index += 2;
+            }
+            "--cwd" => {
+                let Some(value) = args.get(index + 1).filter(|_| index + 1 < separator) else {
+                    eprintln!("missing value for --cwd");
+                    return Ok(2);
+                };
+                tmux_cwd = Some(value.clone());
                 index += 2;
             }
             "--timeout" => {
@@ -338,10 +362,13 @@ fn agent_start(args: &[String]) -> std::io::Result<i32> {
         eprintln!("missing required --kind");
         return Ok(2);
     };
-    let Some(pane_id) = pane_id else {
+    if !tmux && pane_id.is_none() {
         eprintln!("missing required --pane");
         return Ok(2);
-    };
+    }
+    if tmux_target.is_none() {
+        tmux_target = pane_id.clone();
+    }
     let Some(expected_kind) = crate::detect::parse_agent_label(&kind) else {
         eprintln!("unsupported interactive agent kind: {kind}");
         return Ok(2);
@@ -351,6 +378,19 @@ fn agent_start(args: &[String]) -> std::io::Result<i32> {
         args[separator + 1..].to_vec()
     } else {
         Vec::new()
+    };
+    if tmux {
+        return super::runtime::agent_start_tmux(TmuxAgentStartParams {
+            name: name.clone(),
+            kind,
+            target: tmux_target,
+            cwd: tmux_cwd,
+            args: agent_args,
+            environment: std::collections::BTreeMap::new(),
+        });
+    }
+    let Some(pane_id) = pane_id else {
+        return Ok(2);
     };
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(30_000));
     let retryable_timeout = timeout > crate::app::AGENT_START_SETTLE_DELAY
@@ -899,7 +939,6 @@ fn agent_read(args: &[String]) -> std::io::Result<i32> {
                 index += 2;
             }
             "--ansi" => {
-                format = ReadFormat::Ansi;
                 strip_ansi = false;
                 index += 1;
             }
@@ -935,9 +974,8 @@ fn print_agent_help() {
     eprintln!("  herdr agent wait <target> [--until STATUS]... [--timeout MS]");
     eprintln!("  herdr agent attach <target> [--takeover]");
     eprintln!(
-        "  herdr agent start <name> --kind KIND --pane ID [--timeout MS] [-- <agent-args...>]"
+        "  herdr agent start <NAME> --kind KIND [--pane ID] [--tmux] [--target ID] [--cwd PATH] [--timeout MS] [-- <agent-args...>]"
     );
-    eprintln!("  herdr agent explain <target> [--json|--format text|json] [--verbose]");
     eprintln!(
         "  herdr agent explain --file PATH --agent LABEL [--json|--format text|json] [--verbose]"
     );

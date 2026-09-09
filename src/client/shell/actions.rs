@@ -640,6 +640,9 @@ impl ClientShellState {
             PendingEndpointKind::TaskFileWrite => {
                 return self.handle_task_file_write_result(result)
             }
+            PendingEndpointKind::TmuxList => return self.handle_tmux_list_result(result),
+            PendingEndpointKind::TmuxCapture => return self.handle_tmux_capture_result(result),
+            PendingEndpointKind::TmuxAction => return self.handle_tmux_action_result(result),
             PendingEndpointKind::Generic => {}
             PendingEndpointKind::ProductAnnouncementDismiss { version, id } => {
                 return match result {

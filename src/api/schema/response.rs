@@ -26,6 +26,7 @@ use super::server::ServerCapabilities;
 use super::session::SessionSnapshot;
 use super::tabs::TabInfo;
 use super::tasks::{TaskInfo, TaskRuntimeInfo};
+use super::tmux::TmuxPaneInfo;
 use super::workspaces::WorkspaceInfo;
 use super::worktrees::{WorktreeInfo, WorktreeSourceInfo};
 
@@ -205,11 +206,25 @@ pub enum ResponseResult {
         agent: AgentInfo,
         argv: Vec<String>,
     },
+    AgentTmuxStarted {
+        pane: TmuxPaneInfo,
+        argv: Vec<String>,
+    },
     AgentPrompted {
         agent: AgentInfo,
     },
     AgentList {
         agents: Vec<AgentInfo>,
+    },
+    TmuxPaneList {
+        panes: Vec<TmuxPaneInfo>,
+    },
+    TmuxPaneCaptured {
+        pane_id: String,
+        output: String,
+    },
+    TmuxPaneAction {
+        pane_id: String,
     },
     AgentView {
         active: bool,
