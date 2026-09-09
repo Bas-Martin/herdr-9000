@@ -606,7 +606,9 @@ impl App {
                 return;
             }
             let task_id = task.id.clone();
-            if let Err(err) = self.start_task_agent(&task_id) {
+            if let Err(err) = self.run_task_lifecycle(&task_id) {
+                tracing::warn!(task_id, error = %err, "task lifecycle failed");
+            } else if let Err(err) = self.start_task_agent(&task_id) {
                 tracing::warn!(task_id, error = %err, "automatic task agent launch failed");
             }
             Some(
