@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::api::schema::{
     DiffView, GitHubIssueSearchParams, GitHubIssueTaskCreateParams, TaskCreateParams,
-    TaskDiffParams, TaskFileWriteParams, TaskGitAction, TaskGitActionParams, TaskListParams,
-    TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget,
+    TaskDiffParams, TaskFileReadParams, TaskFileWriteParams, TaskGitAction, TaskGitActionParams,
+    TaskListParams, TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
 
@@ -21,6 +21,7 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "close" => task_close(&args[1..]),
         "resources" => task_resources(&args[1..]),
         "diff" => task_diff(&args[1..]),
+        "read" => task_read(&args[1..]),
         "write" => task_write(&args[1..]),
         "github-search" => github_search(&args[1..]),
         "github-create" => github_create(&args[1..]),
@@ -336,6 +337,38 @@ fn task_diff(args: &[String]) -> std::io::Result<i32> {
     })
 }
 
+fn task_read(args: &[String]) -> std::io::Result<i32> {
+    let Some(task_id) = args.first() else {
+        eprintln!("usage: herdr task read <task_id> --path PATH");
+        return Ok(2);
+    };
+    let mut path = None;
+    let mut index = 1;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--path" => {
+                path = option_value(args, index, "--path");
+                if path.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: herdr task read <task_id> --path PATH");
+        return Ok(2);
+    };
+    super::runtime::task_file_read(TaskFileReadParams {
+        task_id: task_id.clone(),
+        path,
+    })
+}
+
 fn task_write(args: &[String]) -> std::io::Result<i32> {
     let Some(task_id) = args.first() else {
         eprintln!("usage: herdr task write <task_id> --path PATH --content TEXT");
@@ -603,6 +636,7 @@ fn print_task_help() {
     println!("  close <task_id>");
     println!("  resources <task_id> [--resource RESOURCE_ID ...]");
     println!("  diff <task_id> [--base REF] [--split|--unified]");
+    println!("  read <task_id> --path PATH");
     println!("  write <task_id> --path PATH --content TEXT");
     println!("  git <task_id> <stage|unstage|commit|push|pr> [OPTIONS]");
     println!("  github-search --repo OWNER/REPO [--query TEXT] [--limit N]");

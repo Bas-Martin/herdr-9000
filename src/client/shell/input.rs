@@ -459,6 +459,13 @@ impl ClientShellState {
                     search_focused: true,
                     ..
                 }))
+                | Some(ClientShellOverlay::TaskFileEditor(
+                    ClientTaskFileEditorOverlay {
+                        loading: false,
+                        saving: false,
+                        ..
+                    },
+                ))
         )
     }
 

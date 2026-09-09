@@ -55,6 +55,19 @@ pub struct TaskDiffInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskFileReadParams {
+    pub task_id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskFileContentInfo {
+    pub task_id: String,
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskFileWriteParams {
     pub task_id: String,
     pub path: String,

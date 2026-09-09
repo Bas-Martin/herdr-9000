@@ -190,6 +190,9 @@ pub(super) struct ShellHitMap {
     pub(super) worktree_search: Rect,
     pub(super) worktree_rows: Vec<(Rect, usize)>,
     pub(super) task_rows: Vec<(Rect, usize)>,
+    pub(super) task_editor_path: Rect,
+    pub(super) task_editor_content: Rect,
+    pub(super) task_editor_save: Rect,
     pub(super) help_popup: Rect,
     pub(super) help_scrollbar: Rect,
     pub(super) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
@@ -357,6 +360,7 @@ pub(super) enum ClientShellOverlayKind {
     ProjectSettings,
     ProjectPatterns,
     TaskBrowser,
+    TaskFileEditor,
 }
 
 #[derive(Debug)]
@@ -710,6 +714,24 @@ pub(super) struct ClientTaskBrowserOverlay {
     pub(super) opening: bool,
     pub(super) error: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientTaskFileEditorField {
+    Path,
+    Content,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientTaskFileEditorOverlay {
+    pub(super) task_id: String,
+    pub(super) path: String,
+    pub(super) content: String,
+    pub(super) field: ClientTaskFileEditorField,
+    pub(super) cursor: usize,
+    pub(super) loading: bool,
+    pub(super) saving: bool,
+    pub(super) error: Option<String>,
+}
 pub(super) enum ClientShellOverlay {
     Onboarding,
     ProductAnnouncement(crate::app::state::ProductAnnouncementState),
@@ -727,6 +749,7 @@ pub(super) enum ClientShellOverlay {
     ProjectPatterns(ClientProjectPatternsOverlay),
     GlobalMenu(ClientGlobalMenuOverlay),
     TaskBrowser(ClientTaskBrowserOverlay),
+    TaskFileEditor(ClientTaskFileEditorOverlay),
     Settings(ClientSettingsOverlay),
 }
 
@@ -748,6 +771,7 @@ impl ClientShellOverlay {
             Self::ProjectPatterns(_) => ClientShellOverlayKind::ProjectPatterns,
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
             Self::TaskBrowser(_) => ClientShellOverlayKind::TaskBrowser,
+            Self::TaskFileEditor(_) => ClientShellOverlayKind::TaskFileEditor,
             Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
         }
@@ -815,6 +839,8 @@ pub(super) enum PendingEndpointKind {
     },
     TaskList,
     TaskOpen,
+    TaskFileRead,
+    TaskFileWrite,
     ProjectCreate,
     ProjectUpdate,
 }

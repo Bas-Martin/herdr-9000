@@ -135,6 +135,8 @@ pub enum Method {
     TaskClose(TaskTarget),
     #[serde(rename = "task.diff")]
     TaskDiff(TaskDiffParams),
+    #[serde(rename = "task.file_read")]
+    TaskFileRead(TaskFileReadParams),
     #[serde(rename = "task.file_write")]
     TaskFileWrite(TaskFileWriteParams),
     #[serde(rename = "task.git_action")]

@@ -5246,6 +5246,21 @@
           ],
           "type": "object"
         },
+        "TaskFileReadParams": {
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "path"
+          ],
+          "type": "object"
+        },
         "TaskFileWriteParams": {
           "properties": {
             "content": {
@@ -6320,6 +6335,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/TaskDiffParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.file_read",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskFileReadParams"
             }
           },
           "required": [
@@ -11478,6 +11509,22 @@
             },
             {
               "properties": {
+                "file": {
+                  "$ref": "#/schemas/success_response/$defs/TaskFileContentInfo"
+                },
+                "type": {
+                  "const": "task_file_content",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "file"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "action": {
                   "$ref": "#/schemas/success_response/$defs/TaskGitActionInfo"
                 },
@@ -13288,6 +13335,25 @@
             "patch",
             "read_only",
             "refreshed_at"
+          ],
+          "type": "object"
+        },
+        "TaskFileContentInfo": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "path",
+            "content"
           ],
           "type": "object"
         },

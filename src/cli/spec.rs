@@ -284,6 +284,12 @@ fn task_command() -> Command {
             "Show GitHub checks for a task",
         ))
         .subcommand(
+            Command::new("read")
+                .about("Read a task workspace file")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(path_option("path", "PATH").required(true)),
+        )
+        .subcommand(
             Command::new("write")
                 .about("Write a task workspace file")
                 .arg(required("task_id", "TASK_ID"))

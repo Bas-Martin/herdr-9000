@@ -428,6 +428,7 @@ pub(crate) fn api_method_name(method: &Method) -> &'static str {
         Method::TaskResources(_) => "task.resources",
         Method::TaskClose(_) => "task.close",
         Method::TaskDiff(_) => "task.diff",
+        Method::TaskFileRead(_) => "task.file_read",
         Method::TaskFileWrite(_) => "task.file_write",
         Method::TaskGitAction(_) => "task.git_action",
         Method::TaskGitHubSearch(_) => "task.github_search",

@@ -1438,6 +1438,68 @@ impl App {
         )
     }
 
+    pub(super) fn handle_task_file_read(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskFileReadParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        let Some(relative) = safe_task_relative_path(&params.path) else {
+            return encode_error(
+                id,
+                "invalid_params",
+                "file path must be repository-relative and outside .git",
+            );
+        };
+        let target = worktree_path.join(&relative);
+        let metadata = match std::fs::symlink_metadata(&target) {
+            Ok(metadata) => metadata,
+            Err(err) => {
+                return encode_error(id, "task_file_read_failed", err.to_string());
+            }
+        };
+        if metadata.file_type().is_symlink() {
+            return encode_error(id, "invalid_params", "symbolic-link files cannot be edited");
+        }
+        let canonical_root = match std::fs::canonicalize(&worktree_path) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(id, "task_workspace_missing", err.to_string());
+            }
+        };
+        let canonical_target = match std::fs::canonicalize(&target) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(id, "task_file_read_failed", err.to_string());
+            }
+        };
+        if !canonical_target.starts_with(&canonical_root) {
+            return encode_error(id, "invalid_params", "file path escapes the task workspace");
+        }
+        let content = match std::fs::read_to_string(&target) {
+            Ok(content) => content,
+            Err(err) => return encode_error(id, "task_file_read_failed", err.to_string()),
+        };
+        encode_success(
+            id,
+            ResponseResult::TaskFileContent {
+                file: crate::api::schema::TaskFileContentInfo {
+                    task_id: task.id,
+                    path: relative.to_string_lossy().replace('\\', "/"),
+                    content,
+                },
+            },
+        )
+    }
+
     pub(super) fn handle_task_file_write(
         &mut self,
         id: String,

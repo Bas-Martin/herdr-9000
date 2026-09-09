@@ -645,6 +645,8 @@ impl ClientShellState {
                 | PendingEndpointKind::ProjectList { .. }
                 | PendingEndpointKind::TaskList
                 | PendingEndpointKind::TaskOpen
+                | PendingEndpointKind::TaskFileRead
+                | PendingEndpointKind::TaskFileWrite
                 | PendingEndpointKind::ProjectCreate
                 | PendingEndpointKind::ProjectUpdate,
                 Err(_),

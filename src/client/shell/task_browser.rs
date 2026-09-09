@@ -105,7 +105,7 @@ pub(super) fn render_task_browser_overlay(
         inner.x,
         footer_y,
         inner.width,
-        " j/k select · enter open · r refresh · esc close ",
+        " j/k select · enter open · e edit · r refresh · esc close ",
         base.fg(p.overlay0),
     );
     Some(OverlayRender {

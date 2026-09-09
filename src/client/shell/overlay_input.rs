@@ -565,6 +565,35 @@ impl ClientShellState {
             return true;
         }
         match self.overlay.as_mut() {
+            Some(ClientShellOverlay::TaskFileEditor(editor)) => {
+                let inserted = match editor.field {
+                    ClientTaskFileEditorField::Path => {
+                        let value = text
+                            .chars()
+                            .filter(|character| !character.is_control())
+                            .collect::<String>();
+                        editor.path.push_str(&value);
+                        !value.is_empty()
+                    }
+                    ClientTaskFileEditorField::Content => {
+                        let value = text
+                            .chars()
+                            .filter(|character| {
+                                !character.is_control() || matches!(character, '\n' | '\t')
+                            })
+                            .collect::<String>();
+                        if value.is_empty() {
+                            false
+                        } else {
+                            editor.content.insert_str(editor.cursor, &value);
+                            editor.cursor += value.len();
+                            true
+                        }
+                    }
+                };
+                editor.error = None;
+                inserted
+            }
             Some(ClientShellOverlay::ProjectCreate(project)) => {
                 let value = match project.field {
                     ClientProjectCreateField::Name => &mut project.name,
@@ -593,7 +622,6 @@ impl ClientShellState {
                 navigator.query.push_str(text);
                 navigator.filter = None;
                 navigator.selected = None;
-
                 true
             }
             _ => false,
@@ -829,6 +857,297 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
+    fn open_selected_task_editor(&mut self) {
+        let Some(task_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TaskBrowser(browser) if !browser.loading && !browser.opening => {
+                browser
+                    .tasks
+                    .get(browser.selected)
+                    .map(|task| task.task_id.clone())
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        self.overlay = Some(ClientShellOverlay::TaskFileEditor(
+            ClientTaskFileEditorOverlay {
+                task_id,
+                path: String::new(),
+                content: String::new(),
+                field: ClientTaskFileEditorField::Path,
+                cursor: 0,
+                loading: false,
+                saving: false,
+                error: None,
+            },
+        ));
+    }
+
+    fn request_task_file_read(&mut self, outcome: &mut ClientShellInput) {
+        let Some(path) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TaskFileEditor(editor) if !editor.path.trim().is_empty() => {
+                Some(editor.path.clone())
+            }
+            _ => None,
+        }) else {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                editor.error = Some("enter a file path before reading".to_owned());
+            }
+            outcome.repaint = true;
+            return;
+        };
+        let Some(task_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TaskFileEditor(editor) => Some(editor.task_id.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+            editor.loading = true;
+            editor.error = None;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TaskFileRead(crate::api::schema::TaskFileReadParams {
+                task_id,
+                path,
+            }),
+            PendingEndpointKind::TaskFileRead,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                editor.loading = false;
+                editor.error = Some("The task file endpoint is unavailable.".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    pub(super) fn save_task_file(&mut self, outcome: &mut ClientShellInput) {
+        let Some((task_id, path, content)) =
+            self.overlay.as_ref().and_then(|overlay| match overlay {
+                ClientShellOverlay::TaskFileEditor(editor)
+                    if !editor.path.trim().is_empty() && !editor.loading && !editor.saving =>
+                {
+                    Some((
+                        editor.task_id.clone(),
+                        editor.path.clone(),
+                        editor.content.clone(),
+                    ))
+                }
+                _ => None,
+            })
+        else {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                if editor.path.trim().is_empty() {
+                    editor.error = Some("enter a file path before saving".to_owned());
+                }
+            }
+            outcome.repaint = true;
+            return;
+        };
+        if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+            editor.saving = true;
+            editor.error = None;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TaskFileWrite(crate::api::schema::TaskFileWriteParams {
+                task_id,
+                path,
+                content,
+            }),
+            PendingEndpointKind::TaskFileWrite,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                editor.saving = false;
+                editor.error = Some("The task file endpoint is unavailable.".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    fn move_task_editor_cursor(&mut self, right: bool) {
+        let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() else {
+            return;
+        };
+        if editor.field != ClientTaskFileEditorField::Content {
+            return;
+        }
+        if right {
+            editor.cursor = editor
+                .content
+                .get(editor.cursor..)
+                .and_then(|value| value.chars().next())
+                .map_or(editor.content.len(), |character| {
+                    editor.cursor + character.len_utf8()
+                });
+        } else {
+            editor.cursor = editor
+                .content
+                .get(..editor.cursor)
+                .and_then(|value| value.char_indices().next_back())
+                .map_or(0, |(index, _)| index);
+        }
+    }
+
+    fn backspace_task_editor(&mut self) {
+        let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() else {
+            return;
+        };
+        match editor.field {
+            ClientTaskFileEditorField::Path => {
+                editor.path.pop();
+            }
+            ClientTaskFileEditorField::Content => {
+                let previous = editor
+                    .content
+                    .get(..editor.cursor)
+                    .and_then(|value| value.char_indices().next_back())
+                    .map_or(0, |(index, _)| index);
+                if previous != editor.cursor {
+                    editor.content.drain(previous..editor.cursor);
+                    editor.cursor = previous;
+                }
+            }
+        }
+        editor.error = None;
+    }
+
+    fn route_task_file_editor_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        use crossterm::event::KeyModifiers;
+        if !matches!(self.overlay, Some(ClientShellOverlay::TaskFileEditor(_))) {
+            return false;
+        }
+        let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+        if code == KeyCode::Esc && modifiers.is_empty() {
+            self.overlay = None;
+        } else if code == KeyCode::Char('s') && modifiers == KeyModifiers::CONTROL {
+            self.save_task_file(outcome);
+        } else if code == KeyCode::Tab || code == KeyCode::BackTab {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                editor.field = match editor.field {
+                    ClientTaskFileEditorField::Path => ClientTaskFileEditorField::Content,
+                    ClientTaskFileEditorField::Content => ClientTaskFileEditorField::Path,
+                };
+                editor.error = None;
+            }
+        } else if code == KeyCode::Enter && modifiers.is_empty() {
+            let field = match self.overlay.as_ref() {
+                Some(ClientShellOverlay::TaskFileEditor(editor)) => editor.field,
+                _ => return true,
+            };
+            match field {
+                ClientTaskFileEditorField::Path => self.request_task_file_read(outcome),
+                ClientTaskFileEditorField::Content => {
+                    self.insert_overlay_text("\n");
+                }
+            }
+        } else if code == KeyCode::Backspace && modifiers.is_empty() {
+            self.backspace_task_editor();
+        } else if code == KeyCode::Left && modifiers.is_empty() {
+            self.move_task_editor_cursor(false);
+        } else if code == KeyCode::Right && modifiers.is_empty() {
+            self.move_task_editor_cursor(true);
+        } else if code == KeyCode::Home && modifiers.is_empty() {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                if editor.field == ClientTaskFileEditorField::Content {
+                    editor.cursor = editor
+                        .content
+                        .get(..editor.cursor)
+                        .and_then(|value| value.rfind('\n'))
+                        .map_or(0, |index| index + 1);
+                }
+            }
+        } else if code == KeyCode::End && modifiers.is_empty() {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                if editor.field == ClientTaskFileEditorField::Content {
+                    editor.cursor = editor
+                        .content
+                        .get(editor.cursor..)
+                        .and_then(|value| value.find('\n'))
+                        .map_or(editor.content.len(), |offset| editor.cursor + offset);
+                }
+            }
+        } else if code == KeyCode::Char('u') && modifiers == KeyModifiers::CONTROL {
+            if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                match editor.field {
+                    ClientTaskFileEditorField::Path => editor.path.clear(),
+                    ClientTaskFileEditorField::Content => {
+                        editor.content.clear();
+                        editor.cursor = 0;
+                    }
+                }
+                editor.error = None;
+            }
+        }
+        outcome.repaint = true;
+        true
+    }
+
+    pub(super) fn handle_task_file_read_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        match result {
+            Ok(crate::api::schema::ResponseResult::TaskFileContent { file }) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.path = file.path;
+                    editor.content = file.content;
+                    editor.cursor = editor.content.len();
+                    editor.field = ClientTaskFileEditorField::Content;
+                    editor.loading = false;
+                    editor.error = None;
+                }
+            }
+            Ok(_) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.loading = false;
+                    editor.error = Some("unexpected task file read response".to_owned());
+                }
+            }
+            Err(error) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.loading = false;
+                    editor.error = Some(error.message);
+                }
+            }
+        }
+        (true, Vec::new())
+    }
+
+    pub(super) fn handle_task_file_write_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        match result {
+            Ok(crate::api::schema::ResponseResult::TaskFileWritten { .. }) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.saving = false;
+                    editor.error = None;
+                }
+            }
+            Ok(_) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.saving = false;
+                    editor.error = Some("unexpected task file write response".to_owned());
+                }
+            }
+            Err(error) => {
+                if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() {
+                    editor.saving = false;
+                    editor.error = Some(error.message);
+                }
+            }
+        }
+        (true, Vec::new())
+    }
+
     fn route_task_browser_key(
         &mut self,
         key: &crate::input::TerminalKey,
@@ -846,6 +1165,7 @@ impl ClientShellState {
             KeyCode::Down | KeyCode::Char('j') if modifiers.is_empty() => {
                 self.move_task_browser_selection(1)
             }
+            KeyCode::Char('e') if modifiers.is_empty() => self.open_selected_task_editor(),
             KeyCode::Enter if modifiers.is_empty() => self.open_selected_task(outcome),
             KeyCode::Char('r') if modifiers.is_empty() => self.request_task_browser(outcome),
             _ => return true,
@@ -1021,6 +1341,9 @@ impl ClientShellState {
             return;
         }
 
+        if self.route_task_file_editor_key(key, outcome) {
+            return;
+        }
         if self.route_task_browser_key(key, outcome) {
             return;
         }

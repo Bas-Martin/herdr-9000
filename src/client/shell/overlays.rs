@@ -2,6 +2,7 @@ use super::*;
 
 mod settings_overlay;
 mod task_browser;
+mod task_editor;
 mod worktree_overlays;
 
 #[derive(Default)]
@@ -25,6 +26,9 @@ pub(crate) struct OverlayRender {
     pub(crate) worktree_branch: Rect,
     pub(crate) worktree_rows: Vec<(Rect, usize)>,
     pub(crate) task_rows: Vec<(Rect, usize)>,
+    pub(crate) task_editor_path: Rect,
+    pub(crate) task_editor_content: Rect,
+    pub(crate) task_editor_save: Rect,
     pub(crate) help_popup: Rect,
     pub(crate) help_scrollbar: Rect,
     pub(crate) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
@@ -88,6 +92,7 @@ pub(crate) fn render_client_overlay(
             worktree_overlays::render_worktree_open_overlay(b, v, p)
         }
         ClientShellOverlay::TaskBrowser(v) => task_browser::render_task_browser_overlay(b, v, p),
+        ClientShellOverlay::TaskFileEditor(v) => task_editor::render_task_editor_overlay(b, v, p),
         ClientShellOverlay::WorktreeRemove(v) => {
             worktree_overlays::render_worktree_remove_overlay(b, v, p)
         }

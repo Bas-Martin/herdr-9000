@@ -1334,6 +1334,31 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::TaskFileEditor(_))) {
+            if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                if super::contains(self.hits.task_editor_save, point) {
+                    self.save_task_file(outcome);
+                } else if super::contains(self.hits.task_editor_path, point) {
+                    if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut()
+                    {
+                        editor.field = ClientTaskFileEditorField::Path;
+                        editor.error = None;
+                    }
+                    outcome.repaint = true;
+                } else if super::contains(self.hits.task_editor_content, point) {
+                    if let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut()
+                    {
+                        editor.field = ClientTaskFileEditorField::Content;
+                        editor.error = None;
+                    }
+                    outcome.repaint = true;
+                } else {
+                    self.overlay = None;
+                    outcome.repaint = true;
+                }
+            }
+            return;
+        }
         if matches!(self.overlay, Some(ClientShellOverlay::TaskBrowser(_))) {
             match mouse.kind {
                 MouseEventKind::ScrollUp => {

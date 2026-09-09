@@ -1082,6 +1082,7 @@ impl App {
             Method::TaskResources(params) => return self.handle_task_resources(request.id, params),
             Method::TaskClose(target) => return self.handle_task_close(request.id, target),
             Method::TaskDiff(params) => return self.handle_task_diff(request.id, params),
+            Method::TaskFileRead(params) => return self.handle_task_file_read(request.id, params),
             Method::TaskFileWrite(params) => {
                 return self.handle_task_file_write(request.id, params)
             }
