@@ -276,6 +276,17 @@ fn task_command() -> Command {
                 .arg(path_option("path", "PATH").required(true))
                 .arg(option("content", "TEXT").required(true)),
         )
+        .subcommand(
+            Command::new("git")
+                .about("Publish task changes")
+                .arg(required("task_id", "TASK_ID"))
+                .arg(required("action", "stage|unstage|commit|push|pr"))
+                .arg(repeatable_option("path", "PATH"))
+                .arg(option("message", "MESSAGE"))
+                .arg(option("title", "TITLE"))
+                .arg(option("body", "BODY"))
+                .arg(option("base", "BRANCH")),
+        )
 }
 
 fn workspace_command() -> Command {

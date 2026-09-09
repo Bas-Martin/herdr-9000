@@ -714,6 +714,209 @@ impl App {
             },
         )
     }
+    pub(super) fn handle_task_git_action(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskGitActionParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        if !worktree_path.is_dir() {
+            return encode_error(
+                id,
+                "task_workspace_missing",
+                "task workspace is no longer available",
+            );
+        }
+        let action = params.action;
+        let (output, pull_request_url) = match action {
+            crate::api::schema::TaskGitAction::Stage => {
+                let mut args = vec!["add".to_owned()];
+                if params.paths.is_empty() {
+                    args.push("-A".to_owned());
+                } else {
+                    args.push("--".to_owned());
+                    for path in params.paths {
+                        let Some(path) = safe_task_relative_path(&path) else {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                "Git paths must be repository-relative and outside .git",
+                            );
+                        };
+                        args.push(path.to_string_lossy().replace('\\', "/"));
+                    }
+                }
+                (run_task_git_owned(&worktree_path, &args), None)
+            }
+            crate::api::schema::TaskGitAction::Unstage => {
+                let mut args = vec!["restore".to_owned(), "--staged".to_owned()];
+                args.push("--".to_owned());
+                if params.paths.is_empty() {
+                    args.push(".".to_owned());
+                } else {
+                    for path in params.paths {
+                        let Some(path) = safe_task_relative_path(&path) else {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                "Git paths must be repository-relative and outside .git",
+                            );
+                        };
+                        args.push(path.to_string_lossy().replace('\\', "/"));
+                    }
+                }
+                (run_task_git_owned(&worktree_path, &args), None)
+            }
+            crate::api::schema::TaskGitAction::Commit => {
+                let Some(message) = params.message.filter(|message| !message.trim().is_empty())
+                else {
+                    return encode_error(id, "invalid_params", "commit message must not be empty");
+                };
+                if message.chars().any(char::is_control) {
+                    return encode_error(
+                        id,
+                        "invalid_params",
+                        "commit message must not contain control characters",
+                    );
+                }
+                let args = vec!["commit".to_owned(), "-m".to_owned(), message];
+                (run_task_git_owned(&worktree_path, &args), None)
+            }
+            crate::api::schema::TaskGitAction::Push => (
+                run_task_git_owned(&worktree_path, &["push".to_owned()]),
+                None,
+            ),
+            crate::api::schema::TaskGitAction::PullRequest => {
+                let branch = match task.branch.clone().or_else(|| {
+                    run_task_git(&worktree_path, &["branch", "--show-current"])
+                        .ok()
+                        .map(|branch| branch.trim().to_owned())
+                }) {
+                    Some(branch) if !branch.is_empty() => branch,
+                    _ => {
+                        return encode_error(
+                            id,
+                            "task_branch_missing",
+                            "task has no branch for pull request creation",
+                        )
+                    }
+                };
+                let base = params
+                    .base
+                    .or(project.worktree_base)
+                    .unwrap_or_else(|| "main".to_owned());
+                let base = base.strip_prefix("origin/").unwrap_or(&base).to_owned();
+                if base.is_empty() || base.starts_with('-') || base.chars().any(char::is_control) {
+                    return encode_error(id, "invalid_params", "pull request base is invalid");
+                }
+                let existing = match run_gh(
+                    &worktree_path,
+                    &[
+                        "pr".to_owned(),
+                        "list".to_owned(),
+                        "--head".to_owned(),
+                        branch.clone(),
+                        "--state".to_owned(),
+                        "open".to_owned(),
+                        "--json".to_owned(),
+                        "url".to_owned(),
+                        "--limit".to_owned(),
+                        "1".to_owned(),
+                    ],
+                ) {
+                    Ok(output) => serde_json::from_str::<Vec<serde_json::Value>>(&output)
+                        .ok()
+                        .and_then(|rows| rows.into_iter().next())
+                        .and_then(|row| {
+                            row.get("url")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                        }),
+                    Err(message) => return encode_error(id, "task_pr_failed", message),
+                };
+                if let Some(url) = existing {
+                    (
+                        Ok("existing open pull request reused".to_owned()),
+                        Some(url),
+                    )
+                } else {
+                    let title = params
+                        .title
+                        .unwrap_or_else(|| task.name.clone())
+                        .trim()
+                        .to_owned();
+                    let body = params.body.unwrap_or_default();
+                    if title.is_empty()
+                        || title.chars().any(char::is_control)
+                        || body.chars().any(char::is_control)
+                    {
+                        return encode_error(
+                            id,
+                            "invalid_params",
+                            "pull request title and body must be printable",
+                        );
+                    }
+                    let output = match run_gh(
+                        &worktree_path,
+                        &[
+                            "pr".to_owned(),
+                            "create".to_owned(),
+                            "--base".to_owned(),
+                            base,
+                            "--head".to_owned(),
+                            branch,
+                            "--title".to_owned(),
+                            title,
+                            "--body".to_owned(),
+                            body,
+                        ],
+                    ) {
+                        Ok(output) => output,
+                        Err(message) => return encode_error(id, "task_pr_failed", message),
+                    };
+                    let url = output
+                        .lines()
+                        .find(|line| line.starts_with("http://") || line.starts_with("https://"))
+                        .map(str::to_owned);
+                    (Ok(output), url)
+                }
+            }
+        };
+        let output = match output {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "task_git_failed", message),
+        };
+        if let Some(url) = pull_request_url.as_deref() {
+            let previous = self.state.tasks.clone();
+            if let Some(task) = self.state.tasks.find_mut(&task.id) {
+                task.pull_request_url = Some(url.to_owned());
+                task.updated_at = crate::task::current_unix_ms();
+            }
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                self.state.tasks = previous;
+                return encode_error(id, "task_save_failed", err.to_string());
+            }
+        }
+        encode_success(
+            id,
+            ResponseResult::TaskGitAction {
+                action: crate::api::schema::TaskGitActionInfo {
+                    task_id: task.id,
+                    action,
+                    output,
+                    pull_request_url,
+                },
+            },
+        )
+    }
 
     fn open_task_target(&mut self, task: &Task, focus: bool) -> Option<TaskRuntimeInfo> {
         let target_path = match task.location {
@@ -783,6 +986,7 @@ impl App {
                     error: run.error.clone(),
                 })
                 .collect(),
+            pull_request_url: task.pull_request_url.clone(),
             status: task.status,
             created_at: task.created_at,
             updated_at: task.updated_at,
@@ -928,15 +1132,37 @@ fn task_environment(
     environment
 }
 fn run_task_git(worktree_path: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let args = args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+    run_task_program("git", worktree_path, &args)
+}
+
+fn run_task_git_owned(worktree_path: &std::path::Path, args: &[String]) -> Result<String, String> {
+    run_task_program("git", worktree_path, args)
+}
+
+fn run_gh(worktree_path: &std::path::Path, args: &[String]) -> Result<String, String> {
+    run_task_program("gh", worktree_path, args)
+}
+
+fn run_task_program(
+    program: &str,
+    worktree_path: &std::path::Path,
+    args: &[String],
+) -> Result<String, String> {
     let git_path = crate::project::display_path(worktree_path).replace('\\', "/");
-    let output = crate::noninteractive_process::command("git")
-        .args(["-C", &git_path])
+    let mut command = crate::noninteractive_process::command(program);
+    if program == "git" {
+        command.arg("-C").arg(&git_path);
+    } else {
+        command.current_dir(worktree_path);
+    }
+    let output = command
         .args(args)
         .output()
-        .map_err(|err| format!("could not run git: {err}"))?;
+        .map_err(|err| format!("could not run {program}: {err}"))?;
     if !output.status.success() {
         return Err(format!(
-            "git failed with status {}: {}",
+            "{program} failed with status {}: {}",
             output.status,
             String::from_utf8_lossy(&output.stderr).trim()
         ));

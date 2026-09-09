@@ -125,6 +125,8 @@ pub enum Method {
     TaskDiff(TaskDiffParams),
     #[serde(rename = "task.file_write")]
     TaskFileWrite(TaskFileWriteParams),
+    #[serde(rename = "task.git_action")]
+    TaskGitAction(TaskGitActionParams),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

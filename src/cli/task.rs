@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::api::schema::{
-    DiffView, TaskCreateParams, TaskDiffParams, TaskFileWriteParams, TaskListParams,
-    TaskOpenParams, TaskRenameParams, TaskTarget,
+    DiffView, TaskCreateParams, TaskDiffParams, TaskFileWriteParams, TaskGitAction,
+    TaskGitActionParams, TaskListParams, TaskOpenParams, TaskRenameParams, TaskTarget,
 };
 use crate::task::TaskLocationMode;
 
@@ -20,6 +20,7 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "close" => task_close(&args[1..]),
         "diff" => task_diff(&args[1..]),
         "write" => task_write(&args[1..]),
+        "git" => task_git(&args[1..]),
         "help" | "--help" | "-h" => {
             print_task_help();
             Ok(0)
@@ -324,6 +325,84 @@ fn task_write(args: &[String]) -> std::io::Result<i32> {
         task_id: task_id.clone(),
         path,
         content,
+    })
+}
+
+fn task_git(args: &[String]) -> std::io::Result<i32> {
+    let Some(task_id) = args.first() else {
+        eprintln!("usage: herdr task git <task_id> <stage|unstage|commit|push|pr> [OPTIONS]");
+        return Ok(2);
+    };
+    let Some(action) = args.get(1).and_then(|action| match action.as_str() {
+        "stage" => Some(TaskGitAction::Stage),
+        "unstage" => Some(TaskGitAction::Unstage),
+        "commit" => Some(TaskGitAction::Commit),
+        "push" => Some(TaskGitAction::Push),
+        "pr" => Some(TaskGitAction::PullRequest),
+        _ => None,
+    }) else {
+        eprintln!("invalid Git task action");
+        return Ok(2);
+    };
+    let mut paths = Vec::new();
+    let mut message = None;
+    let mut title = None;
+    let mut body = None;
+    let mut base = None;
+    let mut index = 2;
+    while index < args.len() {
+        let option = args[index].as_str();
+        let value = || option_value(args, index, option);
+        match option {
+            "--path" => {
+                let Some(value) = value() else {
+                    return Ok(2);
+                };
+                paths.push(value);
+                index += 2;
+            }
+            "--message" => {
+                message = value();
+                if message.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            "--title" => {
+                title = value();
+                if title.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            "--body" => {
+                body = value();
+                if body.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            "--base" => {
+                base = value();
+                if base.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            other => {
+                eprintln!("unknown option: {other}");
+                return Ok(2);
+            }
+        }
+    }
+    super::runtime::task_git_action(TaskGitActionParams {
+        task_id: task_id.clone(),
+        action,
+        paths,
+        message,
+        title,
+        body,
+        base,
     })
 }
 

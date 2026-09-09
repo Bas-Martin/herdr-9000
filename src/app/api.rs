@@ -1075,6 +1075,9 @@ impl App {
             Method::TaskFileWrite(params) => {
                 return self.handle_task_file_write(request.id, params)
             }
+            Method::TaskGitAction(params) => {
+                return self.handle_task_git_action(request.id, params)
+            }
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {
                 let _ = params;

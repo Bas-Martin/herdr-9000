@@ -4750,6 +4750,61 @@
           ],
           "type": "object"
         },
+        "TaskGitAction": {
+          "enum": [
+            "stage",
+            "unstage",
+            "commit",
+            "push",
+            "pull_request"
+          ],
+          "type": "string"
+        },
+        "TaskGitActionParams": {
+          "properties": {
+            "action": {
+              "$ref": "#/schemas/request/$defs/TaskGitAction"
+            },
+            "base": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "body": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "task_id": {
+              "type": "string"
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "task_id",
+            "action"
+          ],
+          "type": "object"
+        },
         "TaskListParams": {
           "properties": {
             "include_closed": {
@@ -5733,6 +5788,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/TaskFileWriteParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.git_action",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskGitActionParams"
             }
           },
           "required": [
@@ -10248,6 +10319,22 @@
             },
             {
               "properties": {
+                "action": {
+                  "$ref": "#/schemas/success_response/$defs/TaskGitActionInfo"
+                },
+                "type": {
+                  "const": "task_git_action",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "action"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "source": {
                   "$ref": "#/schemas/success_response/$defs/WorktreeSourceInfo"
                 },
@@ -11746,6 +11833,41 @@
           ],
           "type": "object"
         },
+        "TaskGitAction": {
+          "enum": [
+            "stage",
+            "unstage",
+            "commit",
+            "push",
+            "pull_request"
+          ],
+          "type": "string"
+        },
+        "TaskGitActionInfo": {
+          "properties": {
+            "action": {
+              "$ref": "#/schemas/success_response/$defs/TaskGitAction"
+            },
+            "output": {
+              "type": "string"
+            },
+            "pull_request_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "action",
+            "output"
+          ],
+          "type": "object"
+        },
         "TaskInfo": {
           "properties": {
             "agent_command": {
@@ -11830,6 +11952,12 @@
               ]
             },
             "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pull_request_url": {
               "type": [
                 "string",
                 "null"

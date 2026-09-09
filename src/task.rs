@@ -84,6 +84,8 @@ pub(crate) struct Task {
     pub(crate) agent_session: Option<crate::agent_resume::PersistedAgentSession>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) lifecycle_runs: Vec<TaskLifecycleRun>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pull_request_url: Option<String>,
     pub(crate) status: TaskStatus,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
@@ -160,6 +162,7 @@ impl Task {
             error: None,
             agent_session: None,
             lifecycle_runs: Vec::new(),
+            pull_request_url: None,
             status: TaskStatus::Open,
             created_at: now,
             updated_at: now,

@@ -94,6 +94,8 @@ pub struct TaskInfo {
     pub environment: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lifecycle_runs: Vec<TaskLifecycleRunInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pull_request_url: Option<String>,
     pub status: TaskStatus,
     pub created_at: u64,
     pub updated_at: u64,
