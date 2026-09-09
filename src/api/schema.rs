@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod agents;
+pub mod checks;
 pub mod commands;
 pub mod common;
 pub mod diffs;
@@ -19,6 +20,7 @@ pub mod workspaces;
 pub mod worktrees;
 
 pub use agents::*;
+pub use checks::*;
 pub use commands::*;
 pub use common::*;
 pub use diffs::*;
@@ -133,6 +135,8 @@ pub enum Method {
     TaskGitHubSearch(GitHubIssueSearchParams),
     #[serde(rename = "task.github_create")]
     TaskGitHubCreate(GitHubIssueTaskCreateParams),
+    #[serde(rename = "task.checks")]
+    TaskChecks(TaskChecksParams),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

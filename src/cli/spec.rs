@@ -269,6 +269,11 @@ fn task_command() -> Command {
                 .arg(flag("split"))
                 .arg(flag("unified")),
         )
+        .subcommand(id_command(
+            "checks",
+            "task_id",
+            "Show GitHub checks for a task",
+        ))
         .subcommand(
             Command::new("write")
                 .about("Write a task workspace file")

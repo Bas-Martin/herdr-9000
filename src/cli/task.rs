@@ -23,6 +23,7 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "write" => task_write(&args[1..]),
         "github-search" => github_search(&args[1..]),
         "github-create" => github_create(&args[1..]),
+        "checks" => task_checks(&args[1..]),
         "git" => task_git(&args[1..]),
         "help" | "--help" | "-h" => {
             print_task_help();
@@ -252,6 +253,16 @@ fn task_close(args: &[String]) -> std::io::Result<i32> {
         task_id: args[0].clone(),
     })
 }
+fn task_checks(args: &[String]) -> std::io::Result<i32> {
+    if args.len() != 1 {
+        eprintln!("usage: herdr task checks <task_id>");
+        return Ok(2);
+    }
+    super::runtime::task_checks(crate::api::schema::TaskChecksParams {
+        task_id: args[0].clone(),
+    })
+}
+
 fn task_diff(args: &[String]) -> std::io::Result<i32> {
     let Some(task_id) = args.first() else {
         eprintln!("usage: herdr task diff <task_id> [--base REF] [--split|--unified]");

@@ -913,6 +913,127 @@ impl App {
         )
     }
 
+    pub(super) fn handle_task_checks(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskChecksParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(pull_request_url) = task.pull_request_url.clone() else {
+            return encode_success(
+                id,
+                ResponseResult::TaskChecks {
+                    checks: crate::api::schema::TaskChecksInfo {
+                        task_id: task.id,
+                        pull_request_url: None,
+                        head_sha: None,
+                        checks: Vec::new(),
+                        message: Some("task has no pull request".to_owned()),
+                        refreshed_at: crate::task::current_unix_ms(),
+                    },
+                },
+            );
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        let head_output = match run_gh(
+            &worktree_path,
+            &[
+                "pr".to_owned(),
+                "view".to_owned(),
+                pull_request_url.clone(),
+                "--json".to_owned(),
+                "headRefOid".to_owned(),
+            ],
+        ) {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "github_checks_failed", message),
+        };
+        let head_sha = serde_json::from_str::<serde_json::Value>(&head_output)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("headRefOid")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            });
+        let checks_output = match run_gh(
+            &worktree_path,
+            &[
+                "pr".to_owned(),
+                "checks".to_owned(),
+                pull_request_url.clone(),
+                "--json".to_owned(),
+                "name,state,link,workflow,startedAt,completedAt".to_owned(),
+            ],
+        ) {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "github_checks_failed", message),
+        };
+        let values = match serde_json::from_str::<Vec<serde_json::Value>>(&checks_output) {
+            Ok(values) => values,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "github_response_invalid",
+                    format!("GitHub returned invalid check data: {err}"),
+                )
+            }
+        };
+        let checks = values
+            .into_iter()
+            .map(|value| crate::api::schema::TaskCheckInfo {
+                name: value
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unnamed check")
+                    .to_owned(),
+                state: value
+                    .get("state")
+                    .or_else(|| value.get("bucket"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("UNKNOWN")
+                    .to_owned(),
+                source: value
+                    .get("workflow")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("GitHub Actions")
+                    .to_owned(),
+                link: value
+                    .get("link")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                started_at: value
+                    .get("startedAt")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+                completed_at: value
+                    .get("completedAt")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned),
+            })
+            .collect();
+        encode_success(
+            id,
+            ResponseResult::TaskChecks {
+                checks: crate::api::schema::TaskChecksInfo {
+                    task_id: task.id,
+                    pull_request_url: Some(pull_request_url),
+                    head_sha,
+                    checks,
+                    message: None,
+                    refreshed_at: crate::task::current_unix_ms(),
+                },
+            },
+        )
+    }
+
     pub(super) fn handle_task_diff(
         &mut self,
         id: String,

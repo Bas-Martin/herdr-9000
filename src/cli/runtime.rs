@@ -3,11 +3,11 @@ use crate::api::schema::{
     PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams, PaneRenameParams,
     PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget, PaneZoomParams,
     ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget, Request,
-    TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskCreateParams, TaskDiffParams,
-    TaskFileWriteParams, TaskGitActionParams, TaskListParams, TaskOpenParams, TaskRenameParams,
-    TaskTarget, WorkspaceCloseParams, WorkspaceCreateParams, WorkspaceRenameParams,
-    WorkspaceTarget, WorktreeCreateParams, WorktreeListParams, WorktreeOpenParams,
-    WorktreeRemoveParams,
+    TabCreateParams, TabListParams, TabRenameParams, TabTarget, TaskChecksParams, TaskCreateParams,
+    TaskDiffParams, TaskFileWriteParams, TaskGitActionParams, TaskListParams, TaskOpenParams,
+    TaskRenameParams, TaskTarget, WorkspaceCloseParams, WorkspaceCreateParams,
+    WorkspaceRenameParams, WorkspaceTarget, WorktreeCreateParams, WorktreeListParams,
+    WorktreeOpenParams, WorktreeRemoveParams,
 };
 
 fn print_method_response(id: &'static str, method: Method) -> std::io::Result<i32> {
@@ -98,6 +98,9 @@ pub(super) fn task_close(target: TaskTarget) -> std::io::Result<i32> {
 }
 pub(super) fn task_diff(params: TaskDiffParams) -> std::io::Result<i32> {
     print_method_response("cli:task:diff", Method::TaskDiff(params))
+}
+pub(super) fn task_checks(params: TaskChecksParams) -> std::io::Result<i32> {
+    print_method_response("cli:task:checks", Method::TaskChecks(params))
 }
 
 pub(super) fn task_file_write(params: TaskFileWriteParams) -> std::io::Result<i32> {

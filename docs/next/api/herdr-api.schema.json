@@ -4702,6 +4702,17 @@
           ],
           "type": "object"
         },
+        "TaskChecksParams": {
+          "properties": {
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "type": "object"
+        },
         "TaskCreateParams": {
           "properties": {
             "branch": {
@@ -5904,6 +5915,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/GitHubIssueTaskCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.checks",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskChecksParams"
             }
           },
           "required": [
@@ -10521,6 +10548,22 @@
             },
             {
               "properties": {
+                "checks": {
+                  "$ref": "#/schemas/success_response/$defs/TaskChecksInfo"
+                },
+                "type": {
+                  "const": "task_checks",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "checks"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
                 "source": {
                   "$ref": "#/schemas/success_response/$defs/WorktreeSourceInfo"
                 },
@@ -11913,6 +11956,85 @@
             "unknown"
           ],
           "type": "string"
+        },
+        "TaskCheckInfo": {
+          "properties": {
+            "completed_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "link": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "started_at": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "state",
+            "source"
+          ],
+          "type": "object"
+        },
+        "TaskChecksInfo": {
+          "properties": {
+            "checks": {
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/TaskCheckInfo"
+              },
+              "type": "array"
+            },
+            "head_sha": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pull_request_url": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "refreshed_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id",
+            "checks",
+            "refreshed_at"
+          ],
+          "type": "object"
         },
         "TaskDiffFile": {
           "properties": {

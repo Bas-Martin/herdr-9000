@@ -1091,6 +1091,7 @@ impl App {
             Method::TaskGitHubCreate(params) => {
                 return self.handle_github_issue_create(request.id, params)
             }
+            Method::TaskChecks(params) => return self.handle_task_checks(request.id, params),
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {
                 let _ = params;

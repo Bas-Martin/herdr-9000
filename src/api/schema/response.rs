@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::agents::AgentInfo;
+use super::checks::TaskChecksInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
 use super::diffs::{TaskDiffInfo, TaskFileWrittenInfo, TaskGitActionInfo};
 use super::events::EventEnvelope;
@@ -118,6 +119,9 @@ pub enum ResponseResult {
     GitHubIssueTaskCreated {
         task: TaskInfo,
         issue: GitHubIssueInfo,
+    },
+    TaskChecks {
+        checks: TaskChecksInfo,
     },
     WorktreeList {
         source: WorktreeSourceInfo,
