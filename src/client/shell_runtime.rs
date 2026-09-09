@@ -17,10 +17,29 @@ pub(super) fn dispatch_client_shell_actions(
                 boot_id,
                 request,
             } => {
+                let background = matches!(
+                    request.method,
+                    crate::api::schema::Method::TaskList(_)
+                        | crate::api::schema::Method::TaskOpen(_)
+                        | crate::api::schema::Method::TaskFileRead(_)
+                        | crate::api::schema::Method::TaskFileWrite(_)
+                );
                 if let Some(connection) = endpoints.connection(&endpoint_id).filter(|_| {
-                    endpoints.active_id() == &endpoint_id && endpoints.active_surface_available()
+                    (endpoints.active_id() == &endpoint_id && endpoints.active_surface_available())
+                        || background
                 }) {
-                    endpoint_commands.enqueue(endpoint_id, connection.generation, boot_id, request);
+                    endpoint_commands.enqueue(
+                        endpoint_id.clone(),
+                        connection.generation,
+                        boot_id,
+                        request,
+                    );
+                    let cancelled = endpoint_commands.send_next(&endpoint_id, endpoints);
+                    if let Some(shell) = shell.as_deref_mut() {
+                        for request_id in cancelled {
+                            repaint |= shell.cancel_endpoint_request(&request_id);
+                        }
+                    }
                 } else if let Some(shell) = shell.as_deref_mut() {
                     repaint |= shell.cancel_endpoint_request(&request.id);
                 }

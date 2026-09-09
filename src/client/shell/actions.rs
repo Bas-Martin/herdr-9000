@@ -319,7 +319,23 @@ impl ClientShellState {
         method: crate::api::schema::Method,
         outcome: &mut ClientShellInput,
     ) {
-        self.push_endpoint_method_with_kind(method, PendingEndpointKind::Generic, outcome);
+        let endpoint_id = self.active_endpoint_id.clone();
+        self.push_endpoint_method_to_endpoint(
+            endpoint_id,
+            method,
+            PendingEndpointKind::Generic,
+            outcome,
+        );
+    }
+
+    pub(super) fn push_endpoint_method_with_kind(
+        &mut self,
+        method: crate::api::schema::Method,
+        kind: PendingEndpointKind,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        let endpoint_id = self.active_endpoint_id.clone();
+        self.push_endpoint_method_to_endpoint(endpoint_id, method, kind, outcome)
     }
 
     fn push_endpoint_notice(
@@ -363,20 +379,26 @@ impl ClientShellState {
         });
         true
     }
-
-    pub(super) fn push_endpoint_method_with_kind(
+    pub(super) fn push_endpoint_method_to_endpoint(
         &mut self,
+        endpoint_id: ClientEndpointId,
         method: crate::api::schema::Method,
         kind: PendingEndpointKind,
         outcome: &mut ClientShellInput,
     ) -> bool {
-        if !self.endpoint_is_online(&self.active_endpoint_id) {
-            let label = self.active_endpoint_label().to_owned();
+        if !self.endpoint_is_online(&endpoint_id) {
+            let label = self.endpoint_label(&endpoint_id).to_owned();
             outcome.repaint |= self.receive_endpoint_unavailable(format!("{label} is not ready"));
             return false;
         }
         let method_name = crate::api::api_method_name(&method).to_owned();
-        if !self.supports_endpoint_method(&method) {
+        let supports_method = self
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == endpoint_id)
+            .and_then(|endpoint| endpoint.methods.as_ref())
+            .is_none_or(|methods| methods.contains(&method_name));
+        if !supports_method {
             outcome.repaint |= self.push_endpoint_notice(
                 ClientEndpointNoticeKind::Unsupported,
                 method_name.clone(),
@@ -387,21 +409,29 @@ impl ClientShellState {
             );
             return false;
         }
-        let Some(snapshot) = self.snapshot.as_deref() else {
+        let Some((boot_id, confirmation_workspace_id)) = self
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == endpoint_id)
+            .and_then(|endpoint| endpoint.snapshot.as_deref())
+            .map(|snapshot| {
+                let confirmation_workspace_id = match &method {
+                    crate::api::schema::Method::TabClose(target) => snapshot
+                        .tabs
+                        .iter()
+                        .find(|tab| tab.tab_id == target.tab_id)
+                        .map(|tab| tab.workspace_id.clone()),
+                    crate::api::schema::Method::PaneClose(target) => snapshot
+                        .panes
+                        .iter()
+                        .find(|pane| pane.pane_id == target.pane_id)
+                        .map(|pane| pane.workspace_id.clone()),
+                    _ => None,
+                };
+                (snapshot.boot_id.clone(), confirmation_workspace_id)
+            })
+        else {
             return false;
-        };
-        let confirmation_workspace_id = match &method {
-            crate::api::schema::Method::TabClose(target) => snapshot
-                .tabs
-                .iter()
-                .find(|tab| tab.tab_id == target.tab_id)
-                .map(|tab| tab.workspace_id.clone()),
-            crate::api::schema::Method::PaneClose(target) => snapshot
-                .panes
-                .iter()
-                .find(|pane| pane.pane_id == target.pane_id)
-                .map(|pane| pane.workspace_id.clone()),
-            _ => None,
         };
         let request_id = self.next_request_id;
         self.next_request_id = self.next_request_id.saturating_add(1);
@@ -409,15 +439,16 @@ impl ClientShellState {
         self.pending_requests.insert(
             request_id.clone(),
             PendingEndpointRequest {
-                boot_id: snapshot.boot_id.clone(),
+                endpoint_id: endpoint_id.clone(),
+                boot_id: boot_id.clone(),
                 method_name,
                 confirmation_workspace_id,
                 kind,
             },
         );
         outcome.actions.push(ClientShellAction::Endpoint {
-            endpoint_id: self.active_endpoint_id.clone(),
-            boot_id: snapshot.boot_id.clone(),
+            endpoint_id,
+            boot_id,
             request: Box::new(crate::api::schema::Request {
                 id: request_id,
                 method,
@@ -535,12 +566,13 @@ impl ClientShellState {
         let Some(pending) = self.pending_requests.remove(request_id) else {
             return (false, Vec::new());
         };
-        if pending.boot_id != boot_id
-            || self
-                .snapshot
-                .as_deref()
-                .is_none_or(|snapshot| snapshot.boot_id != boot_id)
-        {
+        let endpoint_is_current = self
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == pending.endpoint_id)
+            .and_then(|endpoint| endpoint.snapshot.as_deref())
+            .is_some_and(|snapshot| snapshot.boot_id == boot_id);
+        if pending.boot_id != boot_id || !endpoint_is_current {
             return (false, Vec::new());
         }
         if result.is_ok() {
@@ -598,8 +630,12 @@ impl ClientShellState {
             }
         }
         match pending.kind {
-            PendingEndpointKind::TaskList => return self.handle_task_list_result(result),
-            PendingEndpointKind::TaskOpen => return self.handle_task_open_result(result),
+            PendingEndpointKind::TaskList { endpoint_id } => {
+                return self.handle_task_list_result(endpoint_id, result)
+            }
+            PendingEndpointKind::TaskOpen { endpoint_id } => {
+                return self.handle_task_open_result(endpoint_id, result)
+            }
             PendingEndpointKind::TaskFileRead => return self.handle_task_file_read_result(result),
             PendingEndpointKind::TaskFileWrite => {
                 return self.handle_task_file_write_result(result)

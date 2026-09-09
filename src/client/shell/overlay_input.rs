@@ -786,8 +786,11 @@ impl ClientShellState {
     pub(super) fn open_task_browser(&mut self, outcome: &mut ClientShellInput) {
         self.overlay = Some(ClientShellOverlay::TaskBrowser(ClientTaskBrowserOverlay {
             tasks: Vec::new(),
+            task_endpoints: Vec::new(),
+            task_endpoint_labels: Vec::new(),
             selected: 0,
             loading: false,
+            pending_requests: 0,
             opening: false,
             error: None,
         }));
@@ -795,23 +798,48 @@ impl ClientShellState {
     }
 
     fn request_task_browser(&mut self, outcome: &mut ClientShellInput) {
+        let endpoint_ids = self
+            .endpoints
+            .iter()
+            .filter(|endpoint| self.endpoint_is_online(&endpoint.endpoint_id))
+            .map(|endpoint| endpoint.endpoint_id.clone())
+            .collect::<Vec<_>>();
         if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
-            browser.loading = true;
+            browser.loading = !endpoint_ids.is_empty();
+            browser.pending_requests = endpoint_ids.len();
+            browser.tasks.clear();
+            browser.task_endpoints.clear();
+            browser.task_endpoint_labels.clear();
             browser.error = None;
         }
-        let sent = self.push_endpoint_method_with_kind(
-            crate::api::schema::Method::TaskList(crate::api::schema::TaskListParams {
-                project_id: None,
-                include_closed: true,
-            }),
-            PendingEndpointKind::TaskList,
-            outcome,
-        );
-        if !sent {
+        if endpoint_ids.is_empty() {
             if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
-                browser.loading = false;
-                browser.error = Some("The task endpoint is unavailable.".to_owned());
+                browser.error = Some("no task endpoints are online".to_owned());
             }
+            outcome.repaint = true;
+            return;
+        }
+        for endpoint_id in endpoint_ids {
+            let sent = self.push_endpoint_method_to_endpoint(
+                endpoint_id.clone(),
+                crate::api::schema::Method::TaskList(crate::api::schema::TaskListParams {
+                    project_id: None,
+                    include_closed: true,
+                }),
+                PendingEndpointKind::TaskList { endpoint_id },
+                outcome,
+            );
+            if !sent {
+                if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+                    browser.pending_requests = browser.pending_requests.saturating_sub(1);
+                    browser.error.get_or_insert_with(|| {
+                        "one or more task endpoints rejected the request".to_owned()
+                    });
+                }
+            }
+        }
+        if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+            browser.loading = browser.pending_requests != 0;
         }
         outcome.repaint = true;
     }
@@ -825,27 +853,33 @@ impl ClientShellState {
     }
 
     pub(super) fn open_selected_task(&mut self, outcome: &mut ClientShellInput) {
-        let Some(task_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
-            ClientShellOverlay::TaskBrowser(browser) if !browser.loading && !browser.opening => {
-                browser
-                    .tasks
-                    .get(browser.selected)
-                    .map(|task| task.task_id.clone())
-            }
-            _ => None,
-        }) else {
+        let Some((task_id, endpoint_id)) =
+            self.overlay.as_ref().and_then(|overlay| match overlay {
+                ClientShellOverlay::TaskBrowser(browser)
+                    if !browser.loading && !browser.opening =>
+                {
+                    let index = browser.selected;
+                    Some((
+                        browser.tasks.get(index)?.task_id.clone(),
+                        browser.task_endpoints.get(index)?.clone(),
+                    ))
+                }
+                _ => None,
+            })
+        else {
             return;
         };
         if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
             browser.opening = true;
             browser.error = None;
         }
-        let sent = self.push_endpoint_method_with_kind(
+        let sent = self.push_endpoint_method_to_endpoint(
+            endpoint_id.clone(),
             crate::api::schema::Method::TaskOpen(crate::api::schema::TaskOpenParams {
                 task_id,
                 focus: true,
             }),
-            PendingEndpointKind::TaskOpen,
+            PendingEndpointKind::TaskOpen { endpoint_id },
             outcome,
         );
         if !sent {
@@ -858,19 +892,25 @@ impl ClientShellState {
     }
 
     fn open_selected_task_editor(&mut self) {
-        let Some(task_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
-            ClientShellOverlay::TaskBrowser(browser) if !browser.loading && !browser.opening => {
-                browser
-                    .tasks
-                    .get(browser.selected)
-                    .map(|task| task.task_id.clone())
-            }
-            _ => None,
-        }) else {
+        let Some((task_id, endpoint_id)) =
+            self.overlay.as_ref().and_then(|overlay| match overlay {
+                ClientShellOverlay::TaskBrowser(browser)
+                    if !browser.loading && !browser.opening =>
+                {
+                    let index = browser.selected;
+                    Some((
+                        browser.tasks.get(index)?.task_id.clone(),
+                        browser.task_endpoints.get(index)?.clone(),
+                    ))
+                }
+                _ => None,
+            })
+        else {
             return;
         };
         self.overlay = Some(ClientShellOverlay::TaskFileEditor(
             ClientTaskFileEditorOverlay {
+                endpoint_id,
                 task_id,
                 path: String::new(),
                 content: String::new(),
@@ -906,7 +946,14 @@ impl ClientShellState {
             editor.loading = true;
             editor.error = None;
         }
-        let sent = self.push_endpoint_method_with_kind(
+        let Some(endpoint_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TaskFileEditor(editor) => Some(editor.endpoint_id.clone()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let sent = self.push_endpoint_method_to_endpoint(
+            endpoint_id,
             crate::api::schema::Method::TaskFileRead(crate::api::schema::TaskFileReadParams {
                 task_id,
                 path,
@@ -924,12 +971,13 @@ impl ClientShellState {
     }
 
     pub(super) fn save_task_file(&mut self, outcome: &mut ClientShellInput) {
-        let Some((task_id, path, content)) =
+        let Some((endpoint_id, task_id, path, content)) =
             self.overlay.as_ref().and_then(|overlay| match overlay {
                 ClientShellOverlay::TaskFileEditor(editor)
                     if !editor.path.trim().is_empty() && !editor.loading && !editor.saving =>
                 {
                     Some((
+                        editor.endpoint_id.clone(),
                         editor.task_id.clone(),
                         editor.path.clone(),
                         editor.content.clone(),
@@ -950,7 +998,8 @@ impl ClientShellState {
             editor.saving = true;
             editor.error = None;
         }
-        let sent = self.push_endpoint_method_with_kind(
+        let sent = self.push_endpoint_method_to_endpoint(
+            endpoint_id,
             crate::api::schema::Method::TaskFileWrite(crate::api::schema::TaskFileWriteParams {
                 task_id,
                 path,
@@ -967,7 +1016,6 @@ impl ClientShellState {
         }
         outcome.repaint = true;
     }
-
     fn move_task_editor_cursor(&mut self, right: bool) {
         let Some(ClientShellOverlay::TaskFileEditor(editor)) = self.overlay.as_mut() else {
             return;
@@ -1176,29 +1224,58 @@ impl ClientShellState {
 
     pub(super) fn handle_task_list_result(
         &mut self,
+        endpoint_id: ClientEndpointId,
         result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
     ) -> (bool, Vec<ClientShellAction>) {
+        let endpoint_label = self.endpoint_label(&endpoint_id).to_owned();
         let (tasks, error) = match result {
             Ok(crate::api::schema::ResponseResult::TaskList { tasks }) => (tasks, None),
             Ok(_) => (Vec::new(), Some("unexpected task list response".to_owned())),
             Err(error) => (Vec::new(), Some(error.message)),
         };
         if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
-            browser.loading = false;
-            browser.selected = browser.selected.min(tasks.len().saturating_sub(1));
-            browser.tasks = tasks;
-            browser.error = error;
+            if !tasks.is_empty() {
+                browser
+                    .task_endpoints
+                    .extend(std::iter::repeat_n(endpoint_id.clone(), tasks.len()));
+                browser
+                    .task_endpoint_labels
+                    .extend(std::iter::repeat_n(endpoint_label, tasks.len()));
+                browser.tasks.extend(tasks);
+            }
+            browser.pending_requests = browser.pending_requests.saturating_sub(1);
+            browser.loading = browser.pending_requests != 0;
+            browser.selected = browser.selected.min(browser.tasks.len().saturating_sub(1));
+            if browser.tasks.is_empty() {
+                browser.error = error;
+            } else {
+                browser.error = None;
+            }
         }
         (true, Vec::new())
     }
 
     pub(super) fn handle_task_open_result(
         &mut self,
+        endpoint_id: ClientEndpointId,
         result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
     ) -> (bool, Vec<ClientShellAction>) {
         match result {
-            Ok(crate::api::schema::ResponseResult::TaskOpened { .. }) => {
+            Ok(crate::api::schema::ResponseResult::TaskOpened { task, runtime }) => {
                 self.overlay = None;
+                if endpoint_id != self.active_endpoint_id {
+                    let target = runtime
+                        .workspace_id
+                        .or(task.workspace_id)
+                        .map(ClientEndpointFocusTarget::Workspace);
+                    return (
+                        true,
+                        vec![ClientShellAction::ActivateEndpoint {
+                            endpoint_id,
+                            target,
+                        }],
+                    );
+                }
             }
             Ok(_) => {
                 if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {

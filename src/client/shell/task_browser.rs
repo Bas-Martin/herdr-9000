@@ -83,8 +83,13 @@ pub(super) fn render_task_browser_overlay(
                 crate::task::TaskLocationMode::Repository => "repo",
                 crate::task::TaskLocationMode::Worktree => "worktree",
             };
+            let endpoint = browser
+                .task_endpoint_labels
+                .get(index)
+                .map(String::as_str)
+                .unwrap_or("endpoint");
             let label = format!(
-                " {}  {} · {} · {}",
+                " {endpoint}  {}  {} · {} · {}",
                 task.task_id, task.name, status, location
             );
             let style = if index == browser.selected {

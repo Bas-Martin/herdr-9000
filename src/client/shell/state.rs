@@ -709,8 +709,11 @@ pub(super) struct ClientProjectCreateOverlay {
 #[derive(Debug)]
 pub(super) struct ClientTaskBrowserOverlay {
     pub(super) tasks: Vec<crate::api::schema::TaskInfo>,
+    pub(super) task_endpoints: Vec<ClientEndpointId>,
+    pub(super) task_endpoint_labels: Vec<String>,
     pub(super) selected: usize,
     pub(super) loading: bool,
+    pub(super) pending_requests: usize,
     pub(super) opening: bool,
     pub(super) error: Option<String>,
 }
@@ -723,6 +726,7 @@ pub(super) enum ClientTaskFileEditorField {
 
 #[derive(Debug)]
 pub(super) struct ClientTaskFileEditorOverlay {
+    pub(super) endpoint_id: ClientEndpointId,
     pub(super) task_id: String,
     pub(super) path: String,
     pub(super) content: String,
@@ -732,6 +736,7 @@ pub(super) struct ClientTaskFileEditorOverlay {
     pub(super) saving: bool,
     pub(super) error: Option<String>,
 }
+
 pub(super) enum ClientShellOverlay {
     Onboarding,
     ProductAnnouncement(crate::app::state::ProductAnnouncementState),
@@ -837,8 +842,12 @@ pub(super) enum PendingEndpointKind {
     ProjectList {
         workspace_id: String,
     },
-    TaskList,
-    TaskOpen,
+    TaskList {
+        endpoint_id: ClientEndpointId,
+    },
+    TaskOpen {
+        endpoint_id: ClientEndpointId,
+    },
     TaskFileRead,
     TaskFileWrite,
     ProjectCreate,
@@ -846,6 +855,7 @@ pub(super) enum PendingEndpointKind {
 }
 
 pub(super) struct PendingEndpointRequest {
+    pub(super) endpoint_id: ClientEndpointId,
     pub(super) boot_id: String,
     pub(super) method_name: String,
     pub(super) confirmation_workspace_id: Option<String>,
