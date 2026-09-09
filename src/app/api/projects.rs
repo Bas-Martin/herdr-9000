@@ -13,7 +13,7 @@ impl App {
         })
     }
 
-    fn project_info(&self, project: &crate::project::Project) -> ProjectInfo {
+    pub(super) fn project_info(&self, project: &crate::project::Project) -> ProjectInfo {
         ProjectInfo {
             project_id: project.id.clone(),
             name: project.name.clone(),
@@ -35,6 +35,7 @@ impl App {
             },
             preserve_patterns: project.preserve_patterns.clone(),
             environment: project.environment.clone(),
+            external_trackers: project.external_trackers.clone(),
         }
     }
 

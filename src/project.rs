@@ -43,6 +43,8 @@ pub(crate) struct Project {
     pub(crate) lifecycle: ProjectLifecycle,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(crate) environment: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) external_trackers: Vec<crate::api::schema::ExternalTrackerConfig>,
 }
 pub(crate) fn normalize_agent_provider(raw: &str) -> Result<String, String> {
     let value = raw.trim();
@@ -123,6 +125,7 @@ impl Project {
             preserve_patterns: Vec::new(),
             lifecycle: ProjectLifecycle::default(),
             environment: BTreeMap::new(),
+            external_trackers: Vec::new(),
         }
     }
 }

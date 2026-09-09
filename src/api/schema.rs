@@ -6,6 +6,7 @@ pub mod commands;
 pub mod common;
 pub mod diffs;
 pub mod events;
+pub mod external;
 pub mod github;
 pub mod integrations;
 pub mod panes;
@@ -25,6 +26,7 @@ pub use commands::*;
 pub use common::*;
 pub use diffs::*;
 pub use events::*;
+pub use external::*;
 pub use github::*;
 pub use integrations::*;
 pub use panes::*;
@@ -137,6 +139,12 @@ pub enum Method {
     TaskGitHubCreate(GitHubIssueTaskCreateParams),
     #[serde(rename = "task.checks")]
     TaskChecks(TaskChecksParams),
+    #[serde(rename = "external.configure")]
+    ExternalTrackerConfigure(ExternalTrackerConfigureParams),
+    #[serde(rename = "external.search")]
+    ExternalIssueSearch(ExternalIssueSearchParams),
+    #[serde(rename = "external.task_create")]
+    ExternalIssueTaskCreate(ExternalIssueTaskCreateParams),
     #[serde(rename = "worktree.list")]
     WorktreeList(WorktreeListParams),
     #[serde(rename = "worktree.create")]

@@ -912,6 +912,226 @@ impl App {
             },
         )
     }
+    pub(super) fn handle_external_tracker_configure(
+        &mut self,
+        id: String,
+        params: crate::api::schema::ExternalTrackerConfigureParams,
+    ) -> String {
+        let base_url = params.base_url.trim().trim_end_matches('/').to_owned();
+        let credential_env = params.credential_env.trim().to_owned();
+        if !(base_url.starts_with("https://") || base_url.starts_with("http://"))
+            || base_url.chars().any(char::is_control)
+        {
+            return encode_error(
+                id,
+                "invalid_params",
+                "tracker base URL must use HTTP or HTTPS",
+            );
+        }
+        if !valid_environment_name(&credential_env) || credential_env.starts_with("HERDR_") {
+            return encode_error(
+                id,
+                "invalid_params",
+                "tracker credential_env must be a non-Herdr environment variable name",
+            );
+        }
+        let config = crate::api::schema::ExternalTrackerConfig {
+            provider: params.provider,
+            enabled: params.enabled,
+            base_url,
+            credential_env,
+        };
+        let previous = self.state.projects.clone();
+        let Some(project) = self.state.projects.find_mut(&params.project_id) else {
+            return project_not_found(id, &params.project_id);
+        };
+        if let Some(existing) = project
+            .external_trackers
+            .iter_mut()
+            .find(|existing| existing.provider == config.provider)
+        {
+            *existing = config;
+        } else {
+            project.external_trackers.push(config);
+        }
+        if let Err(err) = crate::persist::save_projects(&self.state.projects) {
+            self.state.projects = previous;
+            return encode_error(id, "project_save_failed", err.to_string());
+        }
+        let project = self
+            .state
+            .projects
+            .find(&params.project_id)
+            .expect("configured project should remain available");
+        encode_success(
+            id,
+            ResponseResult::ExternalTrackerConfigured {
+                project: self.project_info(project),
+            },
+        )
+    }
+
+    pub(super) fn handle_external_issue_search(
+        &mut self,
+        id: String,
+        params: crate::api::schema::ExternalIssueSearchParams,
+    ) -> String {
+        let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
+            return project_not_found(id, &params.project_id);
+        };
+        let Some(config) = project
+            .external_trackers
+            .iter()
+            .find(|config| config.provider == params.provider && config.enabled)
+        else {
+            return encode_error(
+                id,
+                "external_tracker_disabled",
+                "tracker is not enabled for this project",
+            );
+        };
+        let Ok(token) = std::env::var(&config.credential_env) else {
+            return encode_error(
+                id,
+                "external_auth_missing",
+                format!(
+                    "set {} before using the {} tracker",
+                    config.credential_env,
+                    external_provider_label(config.provider)
+                ),
+            );
+        };
+        let mut url = format!("{}/issues", config.base_url);
+        if let Some(query) = params.query.filter(|query| !query.trim().is_empty()) {
+            if query.chars().any(char::is_control) {
+                return encode_error(id, "invalid_params", "tracker search text is invalid");
+            }
+            url.push_str("?query=");
+            url.push_str(&percent_encode(&query));
+        }
+        let output = match run_external_request(config.provider, &url, &token) {
+            Ok(output) => output,
+            Err(message) => return encode_error(id, "external_tracker_failed", message),
+        };
+        let value = match serde_json::from_str::<serde_json::Value>(&output) {
+            Ok(value) => value,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "external_response_invalid",
+                    format!("tracker returned invalid JSON: {err}"),
+                )
+            }
+        };
+        let issues = external_issue_values(&value)
+            .into_iter()
+            .take(params.limit.unwrap_or(50).clamp(1, 100) as usize)
+            .filter_map(|value| external_issue_from_value(params.provider, &value, &url).ok())
+            .collect();
+        encode_success(id, ResponseResult::ExternalIssueList { issues })
+    }
+
+    pub(super) fn handle_external_issue_task_create(
+        &mut self,
+        id: String,
+        params: crate::api::schema::ExternalIssueTaskCreateParams,
+    ) -> String {
+        let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
+            return project_not_found(id, &params.project_id);
+        };
+        if !project
+            .external_trackers
+            .iter()
+            .any(|config| config.provider == params.issue.provider && config.enabled)
+        {
+            return encode_error(
+                id,
+                "external_tracker_disabled",
+                "tracker is not enabled for this project",
+            );
+        }
+        let worktree_path = match params.location {
+            TaskLocationMode::Repository => None,
+            TaskLocationMode::Worktree => {
+                let Some(path) = params.worktree_path.as_deref() else {
+                    return encode_error(
+                        id,
+                        "invalid_params",
+                        "worktree tasks require an existing worktree path",
+                    );
+                };
+                let path = match std::fs::canonicalize(path) {
+                    Ok(path) if path.is_dir() => path,
+                    Ok(_) => {
+                        return encode_error(
+                            id,
+                            "invalid_params",
+                            "worktree path is not a directory",
+                        )
+                    }
+                    Err(err) => return encode_error(id, "invalid_params", err.to_string()),
+                };
+                Some(path)
+            }
+        };
+        let context = format!(
+            "{} {}: {}\n\n{}\n\nURL: {}\nState: {}\nLabels: {}\nAssignees: {}",
+            external_provider_label(params.issue.provider),
+            params.issue.identifier,
+            params.issue.title,
+            params.issue.body,
+            params.issue.url,
+            params.issue.state,
+            params.issue.labels.join(", "),
+            params.issue.assignees.join(", "),
+        );
+        let prompt = params
+            .prompt
+            .filter(|prompt| !prompt.trim().is_empty())
+            .map_or_else(
+                || context.clone(),
+                |prompt| format!("{context}\n\n{prompt}"),
+            );
+        let mut task = Task::new(
+            params.project_id,
+            params.issue.title.clone(),
+            params.location,
+            clean_optional(params.branch),
+            worktree_path,
+            project.default_agent.clone(),
+            None,
+            Some(prompt),
+            project.environment.clone(),
+            None,
+            None,
+            None,
+        );
+        task.external_issue = Some(params.issue.clone());
+        let previous = self.state.tasks.clone();
+        self.state.tasks.insert(task.clone());
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return encode_error(id, "task_save_failed", err.to_string());
+        }
+        let task_id = task.id.clone();
+        if task.location == TaskLocationMode::Worktree {
+            if let Err(err) = self.run_task_lifecycle(&task_id) {
+                tracing::warn!(task_id, error = %err, "external issue task lifecycle failed");
+            }
+        }
+        let task = self
+            .state
+            .tasks
+            .find(&task_id)
+            .expect("saved external task should remain available");
+        encode_success(
+            id,
+            ResponseResult::ExternalIssueTaskCreated {
+                task: self.task_info(task),
+                issue: params.issue,
+            },
+        )
+    }
 
     pub(super) fn handle_task_checks(
         &mut self,
@@ -1465,6 +1685,7 @@ impl App {
                     state: issue.state.clone(),
                 }
             }),
+            external_issue: task.external_issue.clone(),
             status: task.status,
             current_step: task.current_step.clone(),
             agent_status: task.agent_status,
@@ -1620,6 +1841,168 @@ fn task_environment(
     }
     environment
 }
+fn valid_environment_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphabetic() || character == '_')
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
+}
+
+fn external_provider_label(provider: crate::api::schema::ExternalTrackerProvider) -> &'static str {
+    match provider {
+        crate::api::schema::ExternalTrackerProvider::Linear => "Linear",
+        crate::api::schema::ExternalTrackerProvider::Jira => "Jira",
+        crate::api::schema::ExternalTrackerProvider::Gitlab => "GitLab",
+        crate::api::schema::ExternalTrackerProvider::Asana => "Asana",
+        crate::api::schema::ExternalTrackerProvider::Plane => "Plane",
+        crate::api::schema::ExternalTrackerProvider::Notion => "Notion",
+    }
+}
+
+fn percent_encode(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+                vec![byte as char]
+            } else {
+                let hex = b"0123456789ABCDEF";
+                vec![
+                    '%',
+                    hex[(byte >> 4) as usize] as char,
+                    hex[(byte & 0x0f) as usize] as char,
+                ]
+            }
+        })
+        .collect()
+}
+
+fn run_external_request(
+    provider: crate::api::schema::ExternalTrackerProvider,
+    url: &str,
+    token: &str,
+) -> Result<String, String> {
+    let mut command = crate::noninteractive_process::command("curl");
+    command.args([
+        "--fail-with-body",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--max-time",
+        "30",
+        "--header",
+        &format!("Authorization: Bearer {token}"),
+    ]);
+    if provider == crate::api::schema::ExternalTrackerProvider::Notion {
+        command.arg("--header").arg("Notion-Version: 2022-06-28");
+    }
+    let output = command
+        .arg(url)
+        .output()
+        .map_err(|err| format!("could not run curl: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "external tracker request failed with status {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn external_issue_values(value: &serde_json::Value) -> Vec<serde_json::Value> {
+    if let Some(values) = value.as_array() {
+        return values.clone();
+    }
+    for key in ["issues", "data", "nodes", "results", "workItems"] {
+        if let Some(values) = value.get(key).and_then(serde_json::Value::as_array) {
+            return values.clone();
+        }
+    }
+    Vec::new()
+}
+
+fn external_issue_from_value(
+    provider: crate::api::schema::ExternalTrackerProvider,
+    value: &serde_json::Value,
+    base_url: &str,
+) -> Result<crate::api::schema::ExternalIssueInfo, String> {
+    let string_field = |keys: &[&str]| {
+        keys.iter()
+            .find_map(|key| value.get(*key).and_then(serde_json::Value::as_str))
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let identifier = string_field(&["identifier", "key", "id"]);
+    let identifier = if identifier.is_empty() {
+        value
+            .get("number")
+            .and_then(serde_json::Value::as_u64)
+            .map_or_else(String::new, |number| number.to_string())
+    } else {
+        identifier
+    };
+    let title = string_field(&["title", "name", "summary"]);
+    if identifier.is_empty() || title.is_empty() {
+        return Err("tracker issue is missing an identifier or title".to_owned());
+    }
+    let labels = value
+        .get("labels")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| {
+                    value
+                        .as_str()
+                        .or_else(|| value.get("name").and_then(serde_json::Value::as_str))
+                })
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let assignees = value
+        .get("assignees")
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| {
+                    value
+                        .as_str()
+                        .or_else(|| value.get("name").and_then(serde_json::Value::as_str))
+                        .or_else(|| value.get("login").and_then(serde_json::Value::as_str))
+                })
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let url = {
+        let url = string_field(&["url", "web_url", "html_url"]);
+        if url.is_empty() {
+            format!("{base_url}/{}", identifier)
+        } else {
+            url
+        }
+    };
+    Ok(crate::api::schema::ExternalIssueInfo {
+        provider,
+        identifier,
+        title,
+        body: string_field(&["body", "description"]),
+        url,
+        state: string_field(&["state", "status", "stateName"]),
+        labels,
+        assignees,
+        metadata: BTreeMap::new(),
+    })
+}
+
 fn github_issue_from_value(
     repository: &str,
     value: &serde_json::Value,

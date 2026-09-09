@@ -2152,6 +2152,161 @@
           ],
           "type": "object"
         },
+        "ExternalIssueInfo": {
+          "properties": {
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "identifier": {
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "metadata": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "provider": {
+              "$ref": "#/schemas/request/$defs/ExternalTrackerProvider"
+            },
+            "state": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "identifier",
+            "title",
+            "body",
+            "url",
+            "state",
+            "labels",
+            "assignees"
+          ],
+          "type": "object"
+        },
+        "ExternalIssueSearchParams": {
+          "properties": {
+            "limit": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "provider": {
+              "$ref": "#/schemas/request/$defs/ExternalTrackerProvider"
+            },
+            "query": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "project_id",
+            "provider"
+          ],
+          "type": "object"
+        },
+        "ExternalIssueTaskCreateParams": {
+          "properties": {
+            "branch": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "issue": {
+              "$ref": "#/schemas/request/$defs/ExternalIssueInfo"
+            },
+            "location": {
+              "$ref": "#/schemas/request/$defs/TaskLocationMode",
+              "default": "repository"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "worktree_path": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "project_id",
+            "issue"
+          ],
+          "type": "object"
+        },
+        "ExternalTrackerConfigureParams": {
+          "properties": {
+            "base_url": {
+              "type": "string"
+            },
+            "credential_env": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "provider": {
+              "$ref": "#/schemas/request/$defs/ExternalTrackerProvider"
+            }
+          },
+          "required": [
+            "project_id",
+            "provider",
+            "enabled",
+            "base_url",
+            "credential_env"
+          ],
+          "type": "object"
+        },
+        "ExternalTrackerProvider": {
+          "enum": [
+            "linear",
+            "jira",
+            "gitlab",
+            "asana",
+            "plane",
+            "notion"
+          ],
+          "type": "string"
+        },
         "GitHubIssueSearchParams": {
           "properties": {
             "limit": {
@@ -5942,6 +6097,54 @@
         {
           "properties": {
             "method": {
+              "const": "external.configure",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ExternalTrackerConfigureParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "external.search",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ExternalIssueSearchParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "external.task_create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/ExternalIssueTaskCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "worktree.list",
               "type": "string"
             },
@@ -8373,6 +8576,91 @@
           ],
           "type": "string"
         },
+        "ExternalIssueInfo": {
+          "properties": {
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "body": {
+              "type": "string"
+            },
+            "identifier": {
+              "type": "string"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "metadata": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "provider": {
+              "$ref": "#/schemas/success_response/$defs/ExternalTrackerProvider"
+            },
+            "state": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "provider",
+            "identifier",
+            "title",
+            "body",
+            "url",
+            "state",
+            "labels",
+            "assignees"
+          ],
+          "type": "object"
+        },
+        "ExternalTrackerConfig": {
+          "properties": {
+            "base_url": {
+              "type": "string"
+            },
+            "credential_env": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "provider": {
+              "$ref": "#/schemas/success_response/$defs/ExternalTrackerProvider"
+            }
+          },
+          "required": [
+            "provider",
+            "enabled",
+            "base_url",
+            "credential_env"
+          ],
+          "type": "object"
+        },
+        "ExternalTrackerProvider": {
+          "enum": [
+            "linear",
+            "jira",
+            "gitlab",
+            "asana",
+            "plane",
+            "notion"
+          ],
+          "type": "string"
+        },
         "GitHubIssueInfo": {
           "properties": {
             "assignees": {
@@ -10064,6 +10352,13 @@
               "default": {},
               "type": "object"
             },
+            "external_trackers": {
+              "default": [],
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/ExternalTrackerConfig"
+              },
+              "type": "array"
+            },
             "lifecycle": {
               "$ref": "#/schemas/success_response/$defs/ProjectLifecycle",
               "default": {}
@@ -10559,6 +10854,61 @@
               "required": [
                 "type",
                 "checks"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "project": {
+                  "$ref": "#/schemas/success_response/$defs/ProjectInfo"
+                },
+                "type": {
+                  "const": "external_tracker_configured",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "project"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "issues": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/ExternalIssueInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "external_issue_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "issues"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "issue": {
+                  "$ref": "#/schemas/success_response/$defs/ExternalIssueInfo"
+                },
+                "task": {
+                  "$ref": "#/schemas/success_response/$defs/TaskInfo"
+                },
+                "type": {
+                  "const": "external_issue_task_created",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task",
+                "issue"
               ],
               "type": "object"
             },
@@ -12272,6 +12622,16 @@
               "type": [
                 "string",
                 "null"
+              ]
+            },
+            "external_issue": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/ExternalIssueInfo"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "github_issue": {

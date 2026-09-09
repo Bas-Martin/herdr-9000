@@ -124,6 +124,8 @@ pub(crate) struct Task {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) github_issue: Option<GitHubIssueContext>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) external_issue: Option<crate::api::schema::ExternalIssueInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) current_step: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agent_status: Option<TaskAgentStatus>,
@@ -207,6 +209,7 @@ impl Task {
             lifecycle_runs: Vec::new(),
             pull_request_url: None,
             github_issue: None,
+            external_issue: None,
             current_step: None,
             agent_status: None,
             history: vec![TaskHistoryEntry {

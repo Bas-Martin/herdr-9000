@@ -1092,6 +1092,15 @@ impl App {
                 return self.handle_github_issue_create(request.id, params)
             }
             Method::TaskChecks(params) => return self.handle_task_checks(request.id, params),
+            Method::ExternalTrackerConfigure(params) => {
+                return self.handle_external_tracker_configure(request.id, params)
+            }
+            Method::ExternalIssueSearch(params) => {
+                return self.handle_external_issue_search(request.id, params)
+            }
+            Method::ExternalIssueTaskCreate(params) => {
+                return self.handle_external_issue_task_create(request.id, params)
+            }
             Method::WorktreeList(params) => return self.handle_worktree_list(request.id, params),
             Method::WorktreeCreate(params) => {
                 let _ = params;

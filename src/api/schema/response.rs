@@ -5,6 +5,7 @@ use super::checks::TaskChecksInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
 use super::diffs::{TaskDiffInfo, TaskFileWrittenInfo, TaskGitActionInfo};
 use super::events::EventEnvelope;
+use super::external::ExternalIssueInfo;
 use super::github::GitHubIssueInfo;
 use super::integrations::{
     IntegrationInstallResult, IntegrationTarget, IntegrationUninstallResult,
@@ -122,6 +123,16 @@ pub enum ResponseResult {
     },
     TaskChecks {
         checks: TaskChecksInfo,
+    },
+    ExternalTrackerConfigured {
+        project: ProjectInfo,
+    },
+    ExternalIssueList {
+        issues: Vec<ExternalIssueInfo>,
+    },
+    ExternalIssueTaskCreated {
+        task: TaskInfo,
+        issue: ExternalIssueInfo,
     },
     WorktreeList {
         source: WorktreeSourceInfo,

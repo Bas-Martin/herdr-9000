@@ -108,6 +108,8 @@ pub struct TaskInfo {
     pub pull_request_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub github_issue: Option<super::github::GitHubIssueInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_issue: Option<super::external::ExternalIssueInfo>,
     pub status: TaskStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_step: Option<String>,

@@ -95,4 +95,6 @@ pub struct ProjectInfo {
     pub preserve_patterns: Vec<String>,
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
+    #[serde(default)]
+    pub external_trackers: Vec<super::external::ExternalTrackerConfig>,
 }
