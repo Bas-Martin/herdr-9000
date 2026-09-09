@@ -1334,6 +1334,39 @@ impl ClientShellState {
             }
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::TaskBrowser(_))) {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    self.move_task_browser_selection(-1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    self.move_task_browser_selection(1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some((_, index)) = self
+                        .hits
+                        .task_rows
+                        .iter()
+                        .find(|(rect, _)| super::contains(*rect, point))
+                        .copied()
+                    {
+                        if let Some(ClientShellOverlay::TaskBrowser(browser)) =
+                            self.overlay.as_mut()
+                        {
+                            browser.selected = index;
+                        }
+                        self.open_selected_task(outcome);
+                    } else {
+                        self.overlay = None;
+                        outcome.repaint = true;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if matches!(
             self.overlay,
             Some(

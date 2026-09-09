@@ -755,6 +755,147 @@ impl ClientShellState {
         }
         outcome.repaint = true;
     }
+    pub(super) fn open_task_browser(&mut self, outcome: &mut ClientShellInput) {
+        self.overlay = Some(ClientShellOverlay::TaskBrowser(ClientTaskBrowserOverlay {
+            tasks: Vec::new(),
+            selected: 0,
+            loading: false,
+            opening: false,
+            error: None,
+        }));
+        self.request_task_browser(outcome);
+    }
+
+    fn request_task_browser(&mut self, outcome: &mut ClientShellInput) {
+        if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+            browser.loading = true;
+            browser.error = None;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TaskList(crate::api::schema::TaskListParams {
+                project_id: None,
+                include_closed: true,
+            }),
+            PendingEndpointKind::TaskList,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+                browser.loading = false;
+                browser.error = Some("The task endpoint is unavailable.".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    pub(super) fn move_task_browser_selection(&mut self, delta: isize) {
+        let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() else {
+            return;
+        };
+        let last = browser.tasks.len().saturating_sub(1);
+        browser.selected = (browser.selected as isize + delta).clamp(0, last as isize) as usize;
+    }
+
+    pub(super) fn open_selected_task(&mut self, outcome: &mut ClientShellInput) {
+        let Some(task_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::TaskBrowser(browser) if !browser.loading && !browser.opening => {
+                browser
+                    .tasks
+                    .get(browser.selected)
+                    .map(|task| task.task_id.clone())
+            }
+            _ => None,
+        }) else {
+            return;
+        };
+        if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+            browser.opening = true;
+            browser.error = None;
+        }
+        let sent = self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::TaskOpen(crate::api::schema::TaskOpenParams {
+                task_id,
+                focus: true,
+            }),
+            PendingEndpointKind::TaskOpen,
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+                browser.opening = false;
+                browser.error = Some("The task endpoint is unavailable.".to_owned());
+            }
+        }
+        outcome.repaint = true;
+    }
+
+    fn route_task_browser_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        if !matches!(self.overlay, Some(ClientShellOverlay::TaskBrowser(_))) {
+            return false;
+        }
+        let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+        match code {
+            KeyCode::Esc if modifiers.is_empty() => self.overlay = None,
+            KeyCode::Up | KeyCode::Char('k') if modifiers.is_empty() => {
+                self.move_task_browser_selection(-1)
+            }
+            KeyCode::Down | KeyCode::Char('j') if modifiers.is_empty() => {
+                self.move_task_browser_selection(1)
+            }
+            KeyCode::Enter if modifiers.is_empty() => self.open_selected_task(outcome),
+            KeyCode::Char('r') if modifiers.is_empty() => self.request_task_browser(outcome),
+            _ => return true,
+        }
+        outcome.repaint = true;
+        true
+    }
+
+    pub(super) fn handle_task_list_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        let (tasks, error) = match result {
+            Ok(crate::api::schema::ResponseResult::TaskList { tasks }) => (tasks, None),
+            Ok(_) => (Vec::new(), Some("unexpected task list response".to_owned())),
+            Err(error) => (Vec::new(), Some(error.message)),
+        };
+        if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+            browser.loading = false;
+            browser.selected = browser.selected.min(tasks.len().saturating_sub(1));
+            browser.tasks = tasks;
+            browser.error = error;
+        }
+        (true, Vec::new())
+    }
+
+    pub(super) fn handle_task_open_result(
+        &mut self,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) -> (bool, Vec<ClientShellAction>) {
+        match result {
+            Ok(crate::api::schema::ResponseResult::TaskOpened { .. }) => {
+                self.overlay = None;
+            }
+            Ok(_) => {
+                if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+                    browser.opening = false;
+                    browser.error = Some("unexpected task open response".to_owned());
+                }
+            }
+            Err(error) => {
+                if let Some(ClientShellOverlay::TaskBrowser(browser)) = self.overlay.as_mut() {
+                    browser.opening = false;
+                    browser.error = Some(error.message);
+                }
+            }
+        }
+        (true, Vec::new())
+    }
+
     pub(super) fn route_overlay_key(
         &mut self,
         key: &crate::input::TerminalKey,
@@ -880,6 +1021,9 @@ impl ClientShellState {
             return;
         }
 
+        if self.route_task_browser_key(key, outcome) {
+            return;
+        }
         if self.route_settings_key(key, outcome) {
             return;
         }

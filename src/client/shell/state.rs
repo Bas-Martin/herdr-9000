@@ -189,6 +189,7 @@ pub(super) struct ShellHitMap {
     pub(super) navigator_rows: Vec<(Rect, ClientNavigatorTarget)>,
     pub(super) worktree_search: Rect,
     pub(super) worktree_rows: Vec<(Rect, usize)>,
+    pub(super) task_rows: Vec<(Rect, usize)>,
     pub(super) help_popup: Rect,
     pub(super) help_scrollbar: Rect,
     pub(super) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
@@ -355,6 +356,7 @@ pub(super) enum ClientShellOverlayKind {
     ProjectCreate,
     ProjectSettings,
     ProjectPatterns,
+    TaskBrowser,
 }
 
 #[derive(Debug)]
@@ -701,6 +703,13 @@ pub(super) struct ClientProjectCreateOverlay {
 }
 
 #[derive(Debug)]
+pub(super) struct ClientTaskBrowserOverlay {
+    pub(super) tasks: Vec<crate::api::schema::TaskInfo>,
+    pub(super) selected: usize,
+    pub(super) loading: bool,
+    pub(super) opening: bool,
+    pub(super) error: Option<String>,
+}
 pub(super) enum ClientShellOverlay {
     Onboarding,
     ProductAnnouncement(crate::app::state::ProductAnnouncementState),
@@ -717,6 +726,7 @@ pub(super) enum ClientShellOverlay {
     ProjectSettings(ClientProjectSettingsOverlay),
     ProjectPatterns(ClientProjectPatternsOverlay),
     GlobalMenu(ClientGlobalMenuOverlay),
+    TaskBrowser(ClientTaskBrowserOverlay),
     Settings(ClientSettingsOverlay),
 }
 
@@ -737,6 +747,7 @@ impl ClientShellOverlay {
             Self::ProjectSettings(_) => ClientShellOverlayKind::ProjectSettings,
             Self::ProjectPatterns(_) => ClientShellOverlayKind::ProjectPatterns,
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
+            Self::TaskBrowser(_) => ClientShellOverlayKind::TaskBrowser,
             Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
         }
@@ -802,6 +813,8 @@ pub(super) enum PendingEndpointKind {
     ProjectList {
         workspace_id: String,
     },
+    TaskList,
+    TaskOpen,
     ProjectCreate,
     ProjectUpdate,
 }

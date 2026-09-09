@@ -3,6 +3,7 @@ use super::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
+    TaskBrowser,
     WhatsNew,
 }
 
@@ -50,6 +51,7 @@ pub(super) fn global_menu_items(
         "detach",
         ClientGlobalMenuAction::Binding(crate::input::KeybindAction::Detach),
     ));
+    items.push(("tasks", ClientGlobalMenuAction::TaskBrowser));
     items
 }
 
@@ -104,6 +106,7 @@ impl ClientShellState {
                 self.record_binding(crate::input::KeybindMatch::Action(binding), outcome)
             }
             ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
+            ClientGlobalMenuAction::TaskBrowser => self.open_task_browser(outcome),
         }
         outcome.repaint = true;
     }

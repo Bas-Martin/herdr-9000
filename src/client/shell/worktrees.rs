@@ -643,6 +643,8 @@ impl ClientShellState {
                 | PendingEndpointKind::CopyMotion { .. }
                 | PendingEndpointKind::CopySearch { .. }
                 | PendingEndpointKind::ProjectList { .. }
+                | PendingEndpointKind::TaskList
+                | PendingEndpointKind::TaskOpen
                 | PendingEndpointKind::ProjectCreate
                 | PendingEndpointKind::ProjectUpdate,
                 Err(_),

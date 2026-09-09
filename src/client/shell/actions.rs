@@ -598,6 +598,8 @@ impl ClientShellState {
             }
         }
         match pending.kind {
+            PendingEndpointKind::TaskList => return self.handle_task_list_result(result),
+            PendingEndpointKind::TaskOpen => return self.handle_task_open_result(result),
             PendingEndpointKind::Generic => {}
             PendingEndpointKind::ProductAnnouncementDismiss { version, id } => {
                 return match result {

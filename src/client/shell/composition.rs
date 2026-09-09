@@ -582,6 +582,7 @@ impl ClientShellState {
                 self.hits.worktree_task_name = rendered.worktree_task_name;
                 self.hits.worktree_branch = rendered.worktree_branch;
                 self.hits.worktree_rows = rendered.worktree_rows;
+                self.hits.task_rows = rendered.task_rows;
                 self.hits.help_popup = rendered.help_popup;
                 self.hits.help_scrollbar = rendered.help_scrollbar;
                 self.hits.help_scroll_metrics = rendered.help_scroll_metrics;
