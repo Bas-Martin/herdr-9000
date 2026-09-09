@@ -43,6 +43,7 @@ pub(super) fn command() -> Command {
         .subcommand(project_command())
         .subcommand(task_command())
         .subcommand(resource_command())
+        .subcommand(automation_command())
         .subcommand(agent_command())
         .subcommand(pane_command())
         .subcommand(terminal_command())
@@ -350,6 +351,50 @@ fn resource_command() -> Command {
             "delete",
             "resource_id",
             "Delete a reusable resource",
+        ))
+}
+
+fn automation_command() -> Command {
+    Command::new("automation")
+        .about("Manage recurring agent automations")
+        .subcommand(Command::new("list").about("List automations"))
+        .subcommand(
+            Command::new("create")
+                .about("Create a recurring automation")
+                .arg(option("name", "NAME").required(true))
+                .arg(option("project", "PROJECT_ID").required(true))
+                .arg(option("cron", "EXPR").required(true))
+                .arg(option("prompt", "TEXT").required(true))
+                .arg(option("provider", "PROVIDER"))
+                .arg(option("model", "MODEL"))
+                .arg(option("workspace-mode", "repository|worktree"))
+                .arg(flag("disable"))
+                .arg(flag("pause")),
+        )
+        .subcommand(
+            Command::new("update")
+                .about("Update a recurring automation")
+                .arg(required("automation_id", "AUTOMATION_ID"))
+                .arg(option("name", "NAME"))
+                .arg(option("cron", "EXPR"))
+                .arg(option("prompt", "TEXT"))
+                .arg(option("provider", "PROVIDER"))
+                .arg(option("model", "MODEL"))
+                .arg(option("workspace-mode", "repository|worktree"))
+                .arg(flag("enable"))
+                .arg(flag("disable"))
+                .arg(flag("pause"))
+                .arg(flag("resume")),
+        )
+        .subcommand(id_command(
+            "delete",
+            "automation_id",
+            "Delete a recurring automation",
+        ))
+        .subcommand(id_command(
+            "run-now",
+            "automation_id",
+            "Run an automation immediately",
         ))
 }
 

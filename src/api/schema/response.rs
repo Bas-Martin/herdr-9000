@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::agents::AgentInfo;
+use super::automations::{AutomationInfo, AutomationRunInfo};
 use super::checks::TaskChecksInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
 use super::diffs::{TaskDiffInfo, TaskFileWrittenInfo, TaskGitActionInfo};
@@ -137,6 +138,19 @@ pub enum ResponseResult {
     ExternalIssueTaskCreated {
         task: TaskInfo,
         issue: ExternalIssueInfo,
+    },
+    AutomationInfo {
+        automation: AutomationInfo,
+    },
+    AutomationList {
+        automations: Vec<AutomationInfo>,
+    },
+    AutomationDeleted {
+        automation_id: String,
+    },
+    AutomationRunStarted {
+        automation: AutomationInfo,
+        run: AutomationRunInfo,
     },
     ResourceInfo {
         resource: ResourceInfoPayload,

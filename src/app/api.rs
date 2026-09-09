@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 mod agent_view;
 mod agents;
+mod automations;
 mod env;
 mod integrations;
 mod layouts;
@@ -1092,6 +1093,21 @@ impl App {
             }
             Method::TaskGitHubCreate(params) => {
                 return self.handle_github_issue_create(request.id, params)
+            }
+            Method::AutomationCreate(params) => {
+                return self.handle_automation_create(request.id, params)
+            }
+            Method::AutomationList(params) => {
+                return self.handle_automation_list(request.id, params)
+            }
+            Method::AutomationUpdate(params) => {
+                return self.handle_automation_update(request.id, params)
+            }
+            Method::AutomationDelete(target) => {
+                return self.handle_automation_delete(request.id, target)
+            }
+            Method::AutomationRunNow(params) => {
+                return self.handle_automation_run_now(request.id, params)
             }
             Method::TaskChecks(params) => return self.handle_task_checks(request.id, params),
             Method::ExternalTrackerConfigure(params) => {

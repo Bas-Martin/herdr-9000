@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod agents;
+pub mod automations;
 pub mod checks;
 pub mod commands;
 pub mod common;
@@ -22,6 +23,7 @@ pub mod workspaces;
 pub mod worktrees;
 
 pub use agents::*;
+pub use automations::*;
 pub use checks::*;
 pub use commands::*;
 pub use common::*;
@@ -143,6 +145,16 @@ pub enum Method {
     TaskGitHubCreate(GitHubIssueTaskCreateParams),
     #[serde(rename = "task.checks")]
     TaskChecks(TaskChecksParams),
+    #[serde(rename = "automation.create")]
+    AutomationCreate(AutomationCreateParams),
+    #[serde(rename = "automation.list")]
+    AutomationList(AutomationListParams),
+    #[serde(rename = "automation.update")]
+    AutomationUpdate(AutomationUpdateParams),
+    #[serde(rename = "automation.delete")]
+    AutomationDelete(AutomationTarget),
+    #[serde(rename = "automation.run_now")]
+    AutomationRunNow(AutomationRunNowParams),
     #[serde(rename = "external.configure")]
     ExternalTrackerConfigure(ExternalTrackerConfigureParams),
     #[serde(rename = "external.search")]

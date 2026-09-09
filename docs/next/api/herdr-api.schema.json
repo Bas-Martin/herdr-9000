@@ -1689,6 +1689,153 @@
           ],
           "type": "object"
         },
+        "AutomationCreateParams": {
+          "properties": {
+            "cron": {
+              "type": "string"
+            },
+            "enabled": {
+              "default": true,
+              "type": "boolean"
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "paused": {
+              "default": false,
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_mode": {
+              "$ref": "#/schemas/request/$defs/TaskLocationMode",
+              "default": "repository"
+            }
+          },
+          "required": [
+            "name",
+            "project_id",
+            "cron",
+            "prompt"
+          ],
+          "type": "object"
+        },
+        "AutomationListParams": {
+          "properties": {
+            "include_disabled": {
+              "default": false,
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "AutomationRunNowParams": {
+          "properties": {
+            "automation_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "automation_id"
+          ],
+          "type": "object"
+        },
+        "AutomationTarget": {
+          "properties": {
+            "automation_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "automation_id"
+          ],
+          "type": "object"
+        },
+        "AutomationUpdateParams": {
+          "properties": {
+            "automation_id": {
+              "type": "string"
+            },
+            "cron": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "enabled": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "paused": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "prompt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "workspace_mode": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/request/$defs/TaskLocationMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "automation_id"
+          ],
+          "type": "object"
+        },
         "ClientShellSurfaceSetParams": {
           "description": "Updates whether the requesting client shell receives and controls pane presentation.",
           "properties": {
@@ -6264,6 +6411,86 @@
         {
           "properties": {
             "method": {
+              "const": "automation.create",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AutomationCreateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "automation.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AutomationListParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "automation.update",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AutomationUpdateParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "automation.delete",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AutomationTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "automation.run_now",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/AutomationRunNowParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "external.configure",
               "type": "string"
             },
@@ -8088,6 +8315,141 @@
             "blocked",
             "done",
             "unknown"
+          ],
+          "type": "string"
+        },
+        "AutomationInfo": {
+          "properties": {
+            "automation_id": {
+              "type": "string"
+            },
+            "created_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "cron": {
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "last_scheduled_slot": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "model": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "paused": {
+              "type": "boolean"
+            },
+            "project_id": {
+              "type": "string"
+            },
+            "prompt": {
+              "type": "string"
+            },
+            "provider": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/schemas/success_response/$defs/AutomationRunInfo"
+              },
+              "type": "array"
+            },
+            "updated_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace_mode": {
+              "$ref": "#/schemas/success_response/$defs/TaskLocationMode"
+            }
+          },
+          "required": [
+            "automation_id",
+            "name",
+            "project_id",
+            "cron",
+            "prompt",
+            "workspace_mode",
+            "enabled",
+            "paused",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "AutomationRunInfo": {
+          "properties": {
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "finished_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "scheduled_slot": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "started_at": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "status": {
+              "$ref": "#/schemas/success_response/$defs/AutomationRunStatus"
+            },
+            "task_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "run_id",
+            "scheduled_slot",
+            "status",
+            "started_at"
+          ],
+          "type": "object"
+        },
+        "AutomationRunStatus": {
+          "enum": [
+            "queued",
+            "provisioning",
+            "launching",
+            "completed",
+            "failed",
+            "skipped"
           ],
           "type": "string"
         },
@@ -11237,6 +11599,77 @@
                 "type",
                 "task",
                 "issue"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "automation": {
+                  "$ref": "#/schemas/success_response/$defs/AutomationInfo"
+                },
+                "type": {
+                  "const": "automation_info",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "automation"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "automations": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/AutomationInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "automation_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "automations"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "automation_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "automation_deleted",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "automation_id"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "automation": {
+                  "$ref": "#/schemas/success_response/$defs/AutomationInfo"
+                },
+                "run": {
+                  "$ref": "#/schemas/success_response/$defs/AutomationRunInfo"
+                },
+                "type": {
+                  "const": "automation_run_started",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "automation",
+                "run"
               ],
               "type": "object"
             },

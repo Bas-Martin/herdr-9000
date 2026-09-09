@@ -411,6 +411,11 @@ impl App {
             tracing::warn!(error = %err, "failed to load resource library");
             crate::resource::ResourceRegistry::default()
         });
+        let automations = crate::persist::load_automations().unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "failed to load recurring automations");
+            crate::automation::AutomationRegistry::default()
+        });
+        crate::automation::reserve_automation_ids(&automations);
         crate::resource::reserve_resource_ids(&resources);
 
         let agent_panel_sort = agent_panel_sort_from_config(config.ui.agent_panel_sort);
@@ -458,6 +463,7 @@ impl App {
             projects,
             tasks,
             resources,
+            automations,
             previous_pane_focus: None,
             selected,
             mode,

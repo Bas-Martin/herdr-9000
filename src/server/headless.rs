@@ -3368,6 +3368,7 @@ impl HeadlessServer {
         }
 
         changed |= self.app.handle_tab_bar_status_tasks(now);
+        changed |= self.app.run_due_automations(std::time::SystemTime::now());
 
         if geometry_dirty {
             self.app.pending_agent_resume_deadline = None;

@@ -1,6 +1,7 @@
 use crate::api::schema::{
-    EmptyParams, GitHubIssueSearchParams, GitHubIssueTaskCreateParams, Method,
-    PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams, PaneRenameParams,
+    AutomationCreateParams, AutomationListParams, AutomationRunNowParams, AutomationTarget,
+    AutomationUpdateParams, EmptyParams, GitHubIssueSearchParams, GitHubIssueTaskCreateParams,
+    Method, PaneFocusDirectionParams, PaneInputSetParams, PaneMoveParams, PaneRenameParams,
     PaneResizeParams, PaneSplitParams, PaneSwapParams, PaneTarget, PaneZoomParams,
     ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget, Request,
     ResourceCreateParams, ResourceListParams, ResourceTarget, ResourceUpdateParams,
@@ -116,6 +117,26 @@ pub(super) fn resource_update(params: ResourceUpdateParams) -> std::io::Result<i
 
 pub(super) fn resource_delete(target: ResourceTarget) -> std::io::Result<i32> {
     print_method_response("cli:resource:delete", Method::ResourceDelete(target))
+}
+
+pub(super) fn automation_list(params: AutomationListParams) -> std::io::Result<i32> {
+    print_method_response("cli:automation:list", Method::AutomationList(params))
+}
+
+pub(super) fn automation_create(params: AutomationCreateParams) -> std::io::Result<i32> {
+    print_method_response("cli:automation:create", Method::AutomationCreate(params))
+}
+
+pub(super) fn automation_update(params: AutomationUpdateParams) -> std::io::Result<i32> {
+    print_method_response("cli:automation:update", Method::AutomationUpdate(params))
+}
+
+pub(super) fn automation_delete(target: AutomationTarget) -> std::io::Result<i32> {
+    print_method_response("cli:automation:delete", Method::AutomationDelete(target))
+}
+
+pub(super) fn automation_run_now(params: AutomationRunNowParams) -> std::io::Result<i32> {
+    print_method_response("cli:automation:run-now", Method::AutomationRunNow(params))
 }
 pub(super) fn task_diff(params: TaskDiffParams) -> std::io::Result<i32> {
     print_method_response("cli:task:diff", Method::TaskDiff(params))

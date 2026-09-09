@@ -24,6 +24,7 @@ macro_rules! println {
 
 mod agent;
 mod api;
+mod automation;
 mod completion;
 mod integration;
 mod machine;
@@ -106,6 +107,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
     }
 
     let exit_code = match command {
+        "automation" => automation::run_automation_command(&args[2..])?,
         "resource" => resource::run_resource_command(&args[2..])?,
         "project" => project::run_project_command(&args[2..])?,
         "task" => task::run_task_command(&args[2..])?,

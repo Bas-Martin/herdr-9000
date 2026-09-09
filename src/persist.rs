@@ -4,6 +4,7 @@
 //! Optional pane screen history is stored separately at `session-history.json`.
 //! Installed plugins are persisted separately at `plugins.json`.
 
+mod automations;
 mod io;
 pub mod plugin_registry;
 mod projects;
@@ -14,6 +15,7 @@ mod tasks;
 
 pub use self::io::{clear, clear_history, load, load_history, save};
 
+pub(crate) use self::automations::{load as load_automations, save as save_automations};
 pub(crate) use self::projects::{load as load_projects, save as save_projects};
 pub(crate) use self::resources::{load as load_resources, save as save_resources};
 pub use self::restore::restore;

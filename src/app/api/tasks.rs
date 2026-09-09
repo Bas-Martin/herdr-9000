@@ -188,7 +188,7 @@ impl App {
         .unwrap_or_else(|| task.name.clone()))
     }
 
-    pub(super) fn start_task_agent(&mut self, task_id: &str) -> Result<(), String> {
+    pub(crate) fn start_task_agent(&mut self, task_id: &str) -> Result<(), String> {
         let Some(task) = self.state.tasks.find(task_id).cloned() else {
             return Err(format!("task {task_id} no longer exists"));
         };
@@ -1710,6 +1710,30 @@ impl App {
                 },
             },
         )
+    }
+
+    pub(crate) fn start_task_with_runtime(&mut self, task_id: &str) -> Result<(), String> {
+        let Some(task) = self.state.tasks.find(task_id).cloned() else {
+            return Err(format!("task {task_id} no longer exists"));
+        };
+        if !self.task_runtime_info(&task).available {
+            let Some(runtime) = self.open_task_target(&task, false) else {
+                return Err("task workspace could not be opened".to_owned());
+            };
+            let previous = self.state.tasks.clone();
+            let Some(stored) = self.state.tasks.find_mut(task_id) else {
+                return Err(format!("task {task_id} no longer exists"));
+            };
+            stored.workspace_id = runtime.workspace_id;
+            stored.tab_id = runtime.tab_id;
+            stored.pane_id = runtime.pane_id;
+            stored.updated_at = crate::task::current_unix_ms();
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                self.state.tasks = previous;
+                return Err(format!("task runtime could not be saved: {err}"));
+            }
+        }
+        self.start_task_agent(task_id)
     }
 
     fn open_task_target(&mut self, task: &Task, focus: bool) -> Option<TaskRuntimeInfo> {
