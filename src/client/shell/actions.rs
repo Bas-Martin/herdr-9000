@@ -386,6 +386,25 @@ impl ClientShellState {
         kind: PendingEndpointKind,
         outcome: &mut ClientShellInput,
     ) -> bool {
+        let mut method = method;
+        if !endpoint_id.is_local() {
+            let remote_endpoint_id = Some(endpoint_id.storage_key());
+            match &mut method {
+                crate::api::schema::Method::ProjectCreate(params) => {
+                    params.remote_endpoint_id = remote_endpoint_id.clone();
+                }
+                crate::api::schema::Method::TaskCreate(params) => {
+                    params.remote_endpoint_id = remote_endpoint_id.clone();
+                }
+                crate::api::schema::Method::TaskGitHubCreate(params) => {
+                    params.remote_endpoint_id = remote_endpoint_id.clone();
+                }
+                crate::api::schema::Method::ExternalIssueTaskCreate(params) => {
+                    params.remote_endpoint_id = remote_endpoint_id;
+                }
+                _ => {}
+            }
+        }
         if !self.endpoint_is_online(&endpoint_id) {
             let label = self.endpoint_label(&endpoint_id).to_owned();
             outcome.repaint |= self.receive_endpoint_unavailable(format!("{label} is not ready"));
@@ -636,6 +655,11 @@ impl ClientShellState {
             PendingEndpointKind::TaskOpen { endpoint_id } => {
                 return self.handle_task_open_result(endpoint_id, result)
             }
+            PendingEndpointKind::ResourceList => return self.handle_resource_list_result(result),
+            PendingEndpointKind::ResourceAction => {
+                return self.handle_resource_action_result(result)
+            }
+            PendingEndpointKind::TaskFileList => return self.handle_task_file_list_result(result),
             PendingEndpointKind::TaskFileRead => return self.handle_task_file_read_result(result),
             PendingEndpointKind::TaskFileWrite => {
                 return self.handle_task_file_write_result(result)

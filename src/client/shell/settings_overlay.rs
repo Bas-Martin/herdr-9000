@@ -197,8 +197,28 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Integrations => {
             render_integrations(buffer, content, settings, palette);
         }
+        ClientSettingsSection::Worktrees => {
+            render_toggle_section(
+                buffer,
+                content,
+                "worktree defaults",
+                "toggle defaults independently; changes apply to new tasks",
+                &[
+                    (
+                        "auto-trust worktree directories",
+                        settings.auto_trust_worktrees,
+                    ),
+                    (
+                        "create branch and worktree by default",
+                        settings.create_worktrees_by_default,
+                    ),
+                ],
+                settings.selected,
+                palette,
+                &mut choice_hits,
+            );
+        }
     }
-
     let installable = settings
         .integrations
         .iter()
@@ -290,6 +310,53 @@ fn render_choice_section(
         }
         let rect = Rect::new(area.x, y, area.width, 1);
         draw_choice(buffer, rect, choice, index == selected, false, palette);
+        hits.push((rect, index));
+    }
+}
+
+fn render_toggle_section(
+    buffer: &mut Buffer,
+    area: Rect,
+    title: &str,
+    description: &str,
+    toggles: &[(&str, bool)],
+    selected: usize,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    put_text(
+        buffer,
+        area.x,
+        area.y,
+        area.width,
+        title,
+        Style::default()
+            .fg(palette.text)
+            .bg(palette.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    put_text(
+        buffer,
+        area.x,
+        area.y + 1,
+        area.width,
+        description,
+        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+    );
+    for (index, (label, enabled)) in toggles.iter().enumerate() {
+        let y = area.y + 3 + index as u16 * 2;
+        if y >= area.bottom() {
+            break;
+        }
+        let rect = Rect::new(area.x, y, area.width, 1);
+        draw_choice(
+            buffer,
+            rect,
+            &format!("{}  {}", if *enabled { "[on]" } else { "[off]" }, label),
+            index == selected,
+            *enabled,
+            palette,
+        );
         hits.push((rect, index));
     }
 }

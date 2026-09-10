@@ -4,6 +4,8 @@ pub(crate) enum ConfigEdit<'a> {
     StatusIndicators(super::StatusIndicatorStyle),
     Sound(bool),
     ToastDelivery(super::ToastDelivery),
+    AutoTrustWorktreeDirs(bool),
+    CreateWorktreeByDefault(bool),
 }
 
 impl ConfigEdit<'_> {
@@ -13,6 +15,8 @@ impl ConfigEdit<'_> {
             Self::StatusIndicators(_) => "status indicators",
             Self::Sound(_) => "sound setting",
             Self::ToastDelivery(_) => "toast setting",
+            Self::AutoTrustWorktreeDirs(_) => "worktree trust setting",
+            Self::CreateWorktreeByDefault(_) => "worktree creation setting",
         }
     }
 
@@ -41,6 +45,12 @@ impl ConfigEdit<'_> {
                 };
                 let content = super::upsert_section_value(content, "ui.toast", "delivery", value);
                 super::remove_section_key(&content, "ui.toast", "enabled")
+            }
+            Self::AutoTrustWorktreeDirs(enabled) => {
+                super::upsert_section_bool(content, "worktrees", "auto_trust_dirs", enabled)
+            }
+            Self::CreateWorktreeByDefault(enabled) => {
+                super::upsert_section_bool(content, "worktrees", "create_by_default", enabled)
             }
         }
     }

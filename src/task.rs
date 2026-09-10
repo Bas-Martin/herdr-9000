@@ -101,11 +101,16 @@ pub(crate) struct TaskLifecycleRun {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Task {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) remote_endpoint_id: Option<String>,
     pub(crate) project_id: String,
     pub(crate) name: String,
     pub(crate) location: TaskLocationMode,
     pub(crate) branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) worktree_path: Option<PathBuf>,
+    #[serde(default)]
+    pub(crate) auto_provisioned_worktree: bool,
     pub(crate) provider: Option<String>,
     pub(crate) model: Option<String>,
     pub(crate) prompt: Option<String>,
@@ -140,6 +145,8 @@ pub(crate) struct Task {
     pub(crate) workspace_id: Option<String>,
     pub(crate) tab_id: Option<String>,
     pub(crate) pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tmux_pane_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -197,11 +204,13 @@ impl Task {
         let now = current_unix_ms();
         Self {
             id: format!("t{}", NEXT_TASK_ID.fetch_add(1, Ordering::Relaxed)),
+            remote_endpoint_id: None,
             project_id,
             name,
             location,
             branch,
             worktree_path,
+            auto_provisioned_worktree: false,
             provider,
             model,
             prompt,
@@ -228,6 +237,7 @@ impl Task {
             workspace_id,
             tab_id,
             pane_id,
+            tmux_pane_id: None,
         }
     }
 }

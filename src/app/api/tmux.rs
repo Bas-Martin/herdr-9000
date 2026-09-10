@@ -152,6 +152,24 @@ impl App {
         id: String,
         params: TmuxPaneSendKeysParams,
     ) -> String {
+        let pane = match crate::platform::list_tmux_panes().and_then(|panes| {
+            panes
+                .into_iter()
+                .find(|pane| pane.pane_id == params.pane_id)
+                .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::NotFound, "tmux pane was not found")
+                })
+        }) {
+            Ok(pane) => pane,
+            Err(err) => return tmux_error(id, err),
+        };
+        if !pane.managed {
+            return encode_error(
+                id,
+                "tmux_pane_unmanaged",
+                "only Herdr-created tmux subagent panes accept input from Herdr",
+            );
+        }
         match crate::platform::send_tmux_keys(&params.pane_id, &params.keys) {
             Ok(()) => encode_success(
                 id,

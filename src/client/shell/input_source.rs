@@ -7,12 +7,15 @@ impl ClientShellState {
                 overlay,
                 ClientShellOverlay::ConfirmClose(_)
                     | ClientShellOverlay::Help(_)
-                    | ClientShellOverlay::Navigator(_)
                     | ClientShellOverlay::WorktreeRemove(_)
+                    | ClientShellOverlay::WorktreeApps(_)
                     | ClientShellOverlay::ContextMenu(_)
                     | ClientShellOverlay::GlobalMenu(_)
                     | ClientShellOverlay::TaskBrowser(_)
                     | ClientShellOverlay::TaskFileEditor(_)
+                    | ClientShellOverlay::ResourceLibrary(_)
+                    | ClientShellOverlay::ResourceEditor(_)
+                    | ClientShellOverlay::TaskWebBrowser(_)
                     | ClientShellOverlay::TmuxPanes(_)
             );
         }

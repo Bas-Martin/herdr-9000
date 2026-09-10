@@ -101,6 +101,57 @@ impl Resource {
             updated_at: now,
         }
     }
+
+    pub(crate) fn capability_diagnostic(&self) -> Option<String> {
+        self.capability_diagnostic_for_provider(self.provider.as_deref())
+    }
+
+    pub(crate) fn capability_diagnostic_for_provider(
+        &self,
+        provider: Option<&str>,
+    ) -> Option<String> {
+        if self.kind == ResourceKind::Mcp
+            && serde_json::from_str::<serde_json::Value>(&self.content).is_err()
+        {
+            return Some(format!("MCP resource {} contains invalid JSON", self.id));
+        }
+        let Some(provider) = provider else {
+            return None;
+        };
+        let Some(agent) = crate::detect::parse_agent_label(provider) else {
+            return Some(format!(
+                "{} resources are not configured for provider {provider}",
+                self.kind.label()
+            ));
+        };
+        if self.kind == ResourceKind::Mcp && agent != crate::detect::Agent::Claude {
+            return Some(format!(
+                "MCP resources are currently supported for Claude only (provider {provider})"
+            ));
+        }
+        None
+    }
+
+    pub(crate) fn is_available_for_provider(&self, provider: Option<&str>) -> bool {
+        self.provider.as_deref().is_none_or(|required| {
+            provider.is_some_and(|actual| {
+                required.eq_ignore_ascii_case(actual)
+                    && self
+                        .capability_diagnostic_for_provider(Some(actual))
+                        .is_none()
+            })
+        }) && self.capability_diagnostic_for_provider(provider).is_none()
+    }
+}
+
+impl ResourceKind {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Prompt => "prompt",
+            Self::Skill => "skill",
+            Self::Mcp => "MCP",
+        }
+    }
 }
 
 pub(crate) fn reserve_resource_ids(registry: &ResourceRegistry) {
@@ -113,4 +164,39 @@ pub(crate) fn reserve_resource_ids(registry: &ResourceRegistry) {
         .unwrap_or(0)
         .saturating_add(1);
     NEXT_RESOURCE_ID.fetch_max(next_id, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resource(provider: Option<&str>) -> Resource {
+        Resource::new(
+            ResourceKind::Skill,
+            "demo".to_owned(),
+            String::new(),
+            ResourceScope::Global,
+            None,
+            None,
+            provider.map(str::to_owned),
+            "instructions".to_owned(),
+        )
+    }
+
+    #[test]
+    fn known_provider_is_available_without_diagnostic() {
+        let resource = resource(Some("codex"));
+        assert!(resource.capability_diagnostic().is_none());
+        assert!(resource.is_available_for_provider(Some("codex")));
+    }
+
+    #[test]
+    fn unknown_provider_exposes_capability_diagnostic() {
+        let resource = resource(Some("unsupported-agent"));
+        let diagnostic = resource
+            .capability_diagnostic()
+            .expect("unknown providers should be diagnosed");
+        assert!(diagnostic.contains("unsupported-agent"));
+        assert!(!resource.is_available_for_provider(Some("unsupported-agent")));
+    }
 }

@@ -133,12 +133,16 @@ pub enum Method {
     TaskRename(TaskRenameParams),
     #[serde(rename = "task.resources")]
     TaskResources(TaskResourcesParams),
+    #[serde(rename = "task.retry")]
+    TaskRetry(TaskTarget),
     #[serde(rename = "task.close")]
     TaskClose(TaskTarget),
     #[serde(rename = "task.diff")]
     TaskDiff(TaskDiffParams),
     #[serde(rename = "task.file_read")]
     TaskFileRead(TaskFileReadParams),
+    #[serde(rename = "task.file_list")]
+    TaskFileList(TaskFileListParams),
     #[serde(rename = "task.file_write")]
     TaskFileWrite(TaskFileWriteParams),
     #[serde(rename = "task.git_action")]

@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -19,6 +20,15 @@ pub(super) struct ClientChromePreferences {
     pub(super) agent_panel_sort: Option<crate::config::AgentPanelSortConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(super) collapsed_groups: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) browser_profiles: BTreeMap<String, Vec<ClientBrowserProfile>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) browser_last_profiles: BTreeMap<String, String>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub(super) struct ClientBrowserProfile {
+    pub(super) name: String,
+    pub(super) url: String,
 }
 
 pub(super) fn path_for_local_endpoint(socket_path: &Path) -> PathBuf {

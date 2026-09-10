@@ -198,6 +198,7 @@ fn resource_update(args: &[String]) -> std::io::Result<i32> {
     let mut name = None;
     let mut description = None;
     let mut content = None;
+    let mut provider = None;
     let mut enabled = None;
     let mut index = 1;
     while index < args.len() {
@@ -213,6 +214,13 @@ fn resource_update(args: &[String]) -> std::io::Result<i32> {
             "--description" => {
                 description = option_value(args, index, option);
                 if description.is_none() {
+                    return Ok(2);
+                }
+                index += 2;
+            }
+            "--provider" => {
+                provider = option_value(args, index, option);
+                if provider.is_none() {
                     return Ok(2);
                 }
                 index += 2;
@@ -244,6 +252,7 @@ fn resource_update(args: &[String]) -> std::io::Result<i32> {
         description,
         content,
         enabled,
+        provider,
     })
 }
 
@@ -256,13 +265,12 @@ fn resource_delete(args: &[String]) -> std::io::Result<i32> {
         resource_id: args[0].clone(),
     })
 }
-
 fn print_resource_help() {
     println!("herdr resource — manage reusable prompts, skills, and MCP resources");
     println!();
     println!("usage: herdr resource <subcommand>");
     println!("  list [--project ID] [--task ID] [--include-disabled]");
     println!("  create --kind prompt|skill|mcp --name NAME --scope global|project|task --content TEXT [OPTIONS]");
-    println!("  update <resource_id> [--name NAME] [--description TEXT] [--content TEXT] [--enable|--disable]");
+    println!("  update <resource_id> [--name NAME] [--description TEXT] [--provider ID] [--content TEXT] [--enable|--disable]");
     println!("  delete <resource_id>");
 }

@@ -1155,7 +1155,286 @@ fn url_at_runtime_cell(
 }
 
 pub(crate) fn safe_web_url(url: &str) -> Option<&str> {
-    (url.starts_with("http://") || url.starts_with("https://")).then_some(url)
+    let supported = url
+        .strip_prefix("http://")
+        .or_else(|| url.strip_prefix("https://"))?;
+    (!supported.is_empty()
+        && !supported
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace()))
+    .then_some(url)
+}
+
+const MAX_WEB_PREVIEW_BYTES: usize = 256 * 1024;
+const MAX_WEB_PREVIEW_LINES: usize = 2_000;
+
+pub(crate) fn fetch_web_preview_for_profile(
+    url: &str,
+    task_id: &str,
+    profile_name: &str,
+) -> Result<Vec<String>, String> {
+    if safe_web_url(url).is_none() {
+        return Err("URL must use http:// or https://".to_owned());
+    }
+    let profile_dir = browser_profile_dir(task_id, profile_name)?;
+    ensure_private_directory(&profile_dir)?;
+    let mut browser_error = None;
+    if let Some(executable) = find_headless_browser() {
+        match run_headless_browser(&executable, url, &profile_dir) {
+            Ok(body) => return preview_lines(&body),
+            Err(error) => browser_error = Some(error),
+        }
+    }
+    let cookie_jar = profile_dir.join("cookies.txt");
+    let output = if let Some(executable) = find_curl() {
+        std::process::Command::new(executable)
+            .args([
+                "--fail",
+                "--silent",
+                "--show-error",
+                "--location",
+                "--connect-timeout",
+                "2",
+                "--max-time",
+                "5",
+                "--max-filesize",
+                "262144",
+                "--proto",
+                "=http,https",
+                "--proto-redir",
+                "=http,https",
+                "--cookie",
+                &cookie_jar.display().to_string(),
+                "--cookie-jar",
+                &cookie_jar.display().to_string(),
+                "--url",
+                url,
+            ])
+            .output()
+            .map_err(|error| format!("web preview is unavailable: {error}"))?
+    } else {
+        return Err(browser_error.unwrap_or_else(|| {
+            "web preview is unavailable: curl and Chromium were not found".to_owned()
+        }));
+    };
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        return Err(if detail.is_empty() {
+            browser_error.unwrap_or_else(|| "web preview request failed".to_owned())
+        } else {
+            format!("web preview request failed: {detail}")
+        });
+    }
+    preview_lines(&output.stdout)
+}
+
+fn browser_profile_dir(task_id: &str, profile_name: &str) -> Result<std::path::PathBuf, String> {
+    if task_id.is_empty() || profile_name.is_empty() {
+        return Err("browser task and profile names must not be empty".to_owned());
+    }
+    Ok(crate::config::config_dir()
+        .join("browser-profiles")
+        .join(hex_path_component(task_id))
+        .join(hex_path_component(profile_name)))
+}
+
+fn ensure_private_directory(path: &std::path::Path) -> Result<(), String> {
+    let mut missing = Vec::new();
+    let mut current = Some(path);
+    while let Some(directory) = current {
+        if directory.is_dir() {
+            break;
+        }
+        missing.push(directory);
+        current = directory.parent();
+    }
+    for directory in missing.into_iter().rev() {
+        match crate::platform::create_private_state_dir(directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(format!("browser profile storage is unavailable: {error}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hex_path_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len().saturating_mul(2));
+    for byte in value.as_bytes() {
+        use std::fmt::Write;
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn find_headless_browser() -> Option<String> {
+    let candidates = if cfg!(windows) {
+        [
+            "chrome.exe",
+            "msedge.exe",
+            "chromium.exe",
+            "chromium-browser.exe",
+        ]
+    } else {
+        [
+            "google-chrome",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+        ]
+    };
+    candidates.into_iter().find_map(|candidate| {
+        std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+            .then(|| candidate.to_owned())
+    })
+}
+
+pub(crate) fn clear_web_profile_storage(task_id: &str, profile_name: &str) -> Result<(), String> {
+    let profile_dir = browser_profile_dir(task_id, profile_name)?;
+    match std::fs::remove_dir_all(profile_dir) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "browser profile storage could not be cleared: {error}"
+        )),
+    }
+}
+
+fn find_curl() -> Option<String> {
+    let candidate = if cfg!(windows) { "curl.exe" } else { "curl" };
+    std::process::Command::new(candidate)
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+        .then(|| candidate.to_owned())
+}
+
+fn run_headless_browser(
+    executable: &str,
+    url: &str,
+    profile_dir: &std::path::Path,
+) -> Result<Vec<u8>, String> {
+    let mut child = std::process::Command::new(executable)
+        .args([
+            "--headless=new",
+            "--disable-gpu",
+            "--disable-extensions",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--dump-dom",
+            "--virtual-time-budget=1500",
+            "--user-data-dir",
+        ])
+        .arg(profile_dir)
+        .arg("--")
+        .arg(url)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("{executable} could not start: {error}"))?;
+    let deadline = Instant::now() + std::time::Duration::from_secs(8);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{executable} timed out while rendering the page"));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                return Err(format!("{executable} could not be monitored: {error}"));
+            }
+        }
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("{executable} output could not be read: {error}"))?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        let detail = detail.trim();
+        return Err(if detail.is_empty() {
+            format!("{executable} failed to render the page")
+        } else {
+            format!("{executable} failed to render the page: {detail}")
+        });
+    }
+    Ok(output.stdout)
+}
+fn preview_lines(body: &[u8]) -> Result<Vec<String>, String> {
+    let body = &body[..body.len().min(MAX_WEB_PREVIEW_BYTES)];
+    let body = String::from_utf8_lossy(body)
+        .chars()
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\r' | '\t'))
+        .collect::<String>();
+    let body = strip_web_markup(&body);
+    if body.is_empty() {
+        return Ok(vec!["(empty response)".to_owned()]);
+    }
+    Ok(body
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(MAX_WEB_PREVIEW_LINES)
+        .map(str::to_owned)
+        .collect())
+}
+
+fn strip_web_markup(body: &str) -> String {
+    let mut text = String::with_capacity(body.len());
+    let mut tag = String::new();
+    let mut in_tag = false;
+    let mut hidden_tag: Option<String> = None;
+    for character in body.chars() {
+        if in_tag {
+            if character == '>' {
+                let tag_name = tag
+                    .trim_start_matches('/')
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+                if tag.starts_with('/') {
+                    if hidden_tag.as_deref() == Some(tag_name.as_str()) {
+                        hidden_tag = None;
+                    }
+                } else if matches!(tag_name.as_str(), "script" | "style") {
+                    hidden_tag = Some(tag_name);
+                }
+                tag.clear();
+                in_tag = false;
+            } else if tag.len() < 64 {
+                tag.push(character);
+            }
+            continue;
+        }
+        if character == '<' {
+            in_tag = true;
+            tag.clear();
+        } else if hidden_tag.is_none() {
+            text.push(character);
+        }
+    }
+    text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2488,6 +2767,25 @@ mod tests {
             None
         );
         assert_eq!(selected_url("open file:///tmp/report", "file"), None);
+    }
+
+    #[test]
+    fn safe_web_url_rejects_unsupported_or_malformed_input() {
+        assert_eq!(safe_web_url("file:///tmp/report"), None);
+        assert_eq!(safe_web_url("http://"), None);
+        assert_eq!(
+            safe_web_url("https://local.test/path"),
+            Some("https://local.test/path")
+        );
+        assert_eq!(safe_web_url("https://local test"), None);
+    }
+
+    #[test]
+    fn web_preview_markup_keeps_visible_text_only() {
+        assert_eq!(
+            strip_web_markup("<h1>Hello &amp; world</h1><script>secret()</script><p>Ready</p>"),
+            "Hello & world\nReady"
+        );
     }
 
     #[test]

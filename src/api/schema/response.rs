@@ -4,7 +4,9 @@ use super::agents::AgentInfo;
 use super::automations::{AutomationInfo, AutomationRunInfo};
 use super::checks::TaskChecksInfo;
 use super::common::{ClientWindowTitleReason, NotificationShowReason};
-use super::diffs::{TaskDiffInfo, TaskFileContentInfo, TaskFileWrittenInfo, TaskGitActionInfo};
+use super::diffs::{
+    TaskDiffInfo, TaskFileContentInfo, TaskFileEntry, TaskFileWrittenInfo, TaskGitActionInfo,
+};
 use super::events::EventEnvelope;
 use super::external::ExternalIssueInfo;
 use super::github::GitHubIssueInfo;
@@ -119,6 +121,10 @@ pub enum ResponseResult {
     },
     TaskFileContent {
         file: TaskFileContentInfo,
+    },
+    TaskFileList {
+        task_id: String,
+        files: Vec<TaskFileEntry>,
     },
     TaskGitAction {
         action: TaskGitActionInfo,

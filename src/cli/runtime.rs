@@ -99,6 +99,9 @@ pub(super) fn task_rename(params: TaskRenameParams) -> std::io::Result<i32> {
 pub(super) fn task_close(target: TaskTarget) -> std::io::Result<i32> {
     print_method_response("cli:task:close", Method::TaskClose(target))
 }
+pub(super) fn task_retry(target: TaskTarget) -> std::io::Result<i32> {
+    print_method_response("cli:task:retry", Method::TaskRetry(target))
+}
 
 pub(super) fn task_resources(params: TaskResourcesParams) -> std::io::Result<i32> {
     print_method_response("cli:task:resources", Method::TaskResources(params))

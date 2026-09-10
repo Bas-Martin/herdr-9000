@@ -4,6 +4,7 @@ use super::*;
 pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
     TaskBrowser,
+    ResourceLibrary,
     TmuxPanes,
     WhatsNew,
 }
@@ -54,6 +55,7 @@ pub(super) fn global_menu_items(
     ));
     items.push(("tasks", ClientGlobalMenuAction::TaskBrowser));
     items.push(("tmux panes", ClientGlobalMenuAction::TmuxPanes));
+    items.push(("resources", ClientGlobalMenuAction::ResourceLibrary));
     items
 }
 
@@ -107,9 +109,10 @@ impl ClientShellState {
             ClientGlobalMenuAction::Binding(binding) => {
                 self.record_binding(crate::input::KeybindMatch::Action(binding), outcome)
             }
-            ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
             ClientGlobalMenuAction::TaskBrowser => self.open_task_browser(outcome),
+            ClientGlobalMenuAction::ResourceLibrary => self.open_resource_library(outcome),
             ClientGlobalMenuAction::TmuxPanes => self.open_tmux_panes(outcome),
+            ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
         }
         outcome.repaint = true;
     }

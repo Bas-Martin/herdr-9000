@@ -44,6 +44,8 @@ pub struct ResourceUpdateParams {
     pub content: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -59,6 +61,8 @@ pub struct ResourceInfo {
     pub task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_diagnostic: Option<String>,
     pub content: String,
     pub enabled: bool,
     pub created_at: u64,

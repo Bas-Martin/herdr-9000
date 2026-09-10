@@ -16,6 +16,7 @@ impl App {
     pub(super) fn project_info(&self, project: &crate::project::Project) -> ProjectInfo {
         ProjectInfo {
             project_id: project.id.clone(),
+            remote_endpoint_id: project.remote_endpoint_id.clone(),
             name: project.name.clone(),
             root_path: crate::project::display_path(&project.root_path),
             workspace_id: self
@@ -114,11 +115,16 @@ impl App {
             Ok(environment) => environment,
             Err(message) => return encode_error(id, "invalid_params", message),
         };
+        let remote_endpoint_id = match normalize_remote_endpoint_id(params.remote_endpoint_id) {
+            Ok(endpoint_id) => endpoint_id,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
         let previous = self.state.projects.clone();
         let worktree_base = clean_worktree_base(params.worktree_base);
         let mut project = crate::project::Project::new(name.to_owned(), root_path, worktree_root);
         project.default_agent = default_agent;
         project.preserve_patterns = preserve_patterns;
+        project.remote_endpoint_id = remote_endpoint_id;
         project.lifecycle = lifecycle;
         project.environment = environment;
         project.worktree_base = worktree_base;
@@ -215,6 +221,7 @@ impl App {
             None,
             None,
             None,
+            None,
         )
     }
     pub(super) fn handle_project_update(
@@ -233,6 +240,7 @@ impl App {
             params.preserve_patterns,
             params.lifecycle,
             params.environment,
+            params.remote_endpoint_id,
         )
     }
     fn update_project(
@@ -247,6 +255,7 @@ impl App {
         preserve_patterns_param: Option<Vec<String>>,
         lifecycle_param: Option<crate::api::schema::ProjectLifecycle>,
         environment_param: Option<std::collections::BTreeMap<String, String>>,
+        remote_endpoint_id_param: Option<String>,
     ) -> String {
         let name = name.trim();
         if name.is_empty() {
@@ -314,12 +323,20 @@ impl App {
             },
             None => existing.environment.clone(),
         };
+        let remote_endpoint_id = match remote_endpoint_id_param {
+            Some(endpoint_id) => match normalize_remote_endpoint_id(Some(endpoint_id)) {
+                Ok(endpoint_id) => endpoint_id,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => existing.remote_endpoint_id.clone(),
+        };
         let previous = self.state.projects.clone();
         let Some(project) = self.state.projects.find_mut(&project_id) else {
             return project_not_found(id, &project_id);
         };
         project.preserve_patterns = preserve_patterns;
         project.default_agent = default_agent;
+        project.remote_endpoint_id = remote_endpoint_id;
         let old_root_path = project.root_path.clone();
         project.name = name.to_owned();
         project.environment = environment;
@@ -449,6 +466,20 @@ fn normalize_lifecycle_command(
         return Err(format!(
             "lifecycle {step} command must be printable and at most 8192 bytes"
         ));
+    }
+    Ok(Some(value))
+}
+
+fn normalize_remote_endpoint_id(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > 256 || value.chars().any(char::is_control) {
+        return Err("remote endpoint id must be printable and at most 256 bytes".to_owned());
     }
     Ok(Some(value))
 }

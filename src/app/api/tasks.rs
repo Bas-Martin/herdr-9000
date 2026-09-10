@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use crate::api::schema::{
@@ -15,6 +16,14 @@ use crate::task::{
 
 use super::responses::{encode_error, encode_success};
 
+#[derive(Debug, Default)]
+struct TaskResourceActivation {
+    environment: BTreeMap<String, String>,
+    mcp_config_path: Option<std::path::PathBuf>,
+}
+
+static NEXT_TASK_RESOURCE_TEMP: AtomicU64 = AtomicU64::new(1);
+
 impl App {
     pub(super) fn handle_task_create(&mut self, id: String, params: TaskCreateParams) -> String {
         let name = params.name.trim();
@@ -30,7 +39,16 @@ impl App {
         };
         let project_default_agent = project.default_agent.clone();
         let mut environment = project.environment.clone();
-        let worktree_path = match params.location {
+        let requested_branch = clean_optional(params.branch);
+        let location = if self.state.create_worktrees_by_default
+            && params.location == TaskLocationMode::Repository
+            && params.worktree_path.is_none()
+        {
+            TaskLocationMode::Worktree
+        } else {
+            params.location
+        };
+        let (worktree_path, branch, auto_provisioned_worktree) = match location {
             TaskLocationMode::Repository => {
                 if params
                     .worktree_path
@@ -43,34 +61,41 @@ impl App {
                         "repository tasks must not specify a worktree path",
                     );
                 }
-                None
+                (None, requested_branch, false)
             }
             TaskLocationMode::Worktree => {
-                let Some(path) = params.worktree_path.as_deref() else {
-                    return encode_error(
-                        id,
-                        "invalid_params",
-                        "worktree tasks require an existing worktree path",
-                    );
-                };
-                let path = match std::fs::canonicalize(path) {
-                    Ok(path) if path.is_dir() => path,
-                    Ok(_) => {
-                        return encode_error(
-                            id,
-                            "invalid_params",
-                            "task worktree path must be a directory",
-                        )
+                if let Some(path) = params.worktree_path.as_deref() {
+                    let path = match std::fs::canonicalize(path) {
+                        Ok(path) if path.is_dir() => path,
+                        Ok(_) => {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                "task worktree path must be a directory",
+                            )
+                        }
+                        Err(err) => {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                format!("task worktree path is not accessible: {err}"),
+                            )
+                        }
+                    };
+                    (Some(path), requested_branch, false)
+                } else {
+                    match provision_task_worktree(
+                        &project,
+                        &self.state.worktree_directory,
+                        name,
+                        requested_branch.as_deref(),
+                    ) {
+                        Ok((path, branch)) => (Some(path), Some(branch), true),
+                        Err(message) => {
+                            return encode_error(id, "task_workspace_provision_failed", message)
+                        }
                     }
-                    Err(err) => {
-                        return encode_error(
-                            id,
-                            "invalid_params",
-                            format!("task worktree path is not accessible: {err}"),
-                        )
-                    }
-                };
-                Some(path)
+                }
             }
         };
         let task_environment = match super::projects::normalize_environment(params.environment) {
@@ -95,12 +120,19 @@ impl App {
             return encode_error(id, "invalid_params", message);
         }
         let prompt = params.prompt.filter(|prompt| !prompt.is_empty());
+        let remote_endpoint_id = match params.remote_endpoint_id {
+            Some(endpoint_id) => match normalize_remote_endpoint_id(Some(endpoint_id)) {
+                Ok(endpoint_id) => endpoint_id,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => project.remote_endpoint_id.clone(),
+        };
         let previous = self.state.tasks.clone();
-        let task = Task::new(
+        let mut task = Task::new(
             params.project_id,
             name.to_owned(),
-            params.location,
-            clean_optional(params.branch),
+            location,
+            branch,
             worktree_path,
             provider,
             clean_optional(params.model),
@@ -111,9 +143,29 @@ impl App {
             clean_optional(params.tab_id),
             clean_optional(params.pane_id),
         );
+        task.remote_endpoint_id = remote_endpoint_id;
+        task.auto_provisioned_worktree = auto_provisioned_worktree;
+        let cleanup_path = task.worktree_path.clone();
         self.state.tasks.insert(task.clone());
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
+            if auto_provisioned_worktree {
+                if let Some(path) = cleanup_path.as_deref() {
+                    let remove = crate::worktree::build_worktree_remove_command(
+                        &project.root_path,
+                        path,
+                        true,
+                        true,
+                    );
+                    let _ = crate::worktree::run_worktree_remove_command_with_recovery(
+                        &remove,
+                        &project.root_path,
+                        path,
+                        true,
+                        true,
+                    );
+                }
+            }
             return encode_error(id, "task_save_failed", err.to_string());
         }
         let task_id = task.id.clone();
@@ -162,13 +214,18 @@ impl App {
                     }
                 }
             }
-            if let Some(resource_provider) = resource.provider.as_deref() {
-                if provider != Some(resource_provider) {
-                    return Err(format!(
-                        "resource {} requires provider {resource_provider}",
-                        resource.id
-                    ));
-                }
+            if let Some(diagnostic) = resource.capability_diagnostic_for_provider(provider) {
+                return Err(diagnostic);
+            }
+            if !resource.is_available_for_provider(provider) {
+                let required = resource
+                    .provider
+                    .as_deref()
+                    .unwrap_or("the selected provider");
+                return Err(format!(
+                    "resource {} requires provider {required}",
+                    resource.id
+                ));
             }
             resources.push(resource);
         }
@@ -209,7 +266,7 @@ impl App {
             self.record_task_error(task_id, message.clone());
             return Err(message);
         };
-        let environment = task_environment(&task, &project, &workspace_path);
+        let mut environment = task_environment(&task, &project, &workspace_path);
         let Some(pane_id) = task.pane_id.clone() else {
             let message = "task has no runtime pane for automatic agent launch".to_owned();
             self.record_task_error(task_id, message.clone());
@@ -222,38 +279,101 @@ impl App {
                 return Err(message);
             }
         };
+        let resources = match self.resolve_task_resources(
+            &task.project_id,
+            Some(&task.id),
+            &task.resource_ids,
+            Some(&provider),
+        ) {
+            Ok(resources) => resources,
+            Err(message) => {
+                self.record_task_error(task_id, message.clone());
+                return Err(message);
+            }
+        };
+        let activation = match activate_task_resources(&task, &resources, &provider) {
+            Ok(activation) => activation,
+            Err(message) => {
+                self.record_task_error(task_id, message.clone());
+                return Err(message);
+            }
+        };
+        environment.extend(activation.environment);
+        let agent_args = provider_agent_args(&provider, activation.mcp_config_path.as_deref());
         let command = crate::detect::interactive_agent_executable(
             crate::detect::parse_agent_label(&provider)
                 .expect("normalized task provider must have a known agent"),
         )
         .to_owned();
+        let mut launch_command = vec![command.clone()];
+        launch_command.extend(agent_args.clone());
+        let tmux_pane_id = if self.state.tmux_subagents {
+            let existing = task.tmux_pane_id.as_deref().and_then(|pane_id| {
+                crate::platform::list_tmux_panes()
+                    .ok()?
+                    .into_iter()
+                    .find(|pane| {
+                        pane.pane_id == pane_id
+                            && !pane.dead
+                            && pane.managed
+                            && pane.agent_name.as_deref() == Some(task.id.as_str())
+                            && pane.agent_kind.as_deref() == Some(provider.as_str())
+                    })
+            });
+            match existing {
+                Some(pane) => Some(pane.pane_id),
+                None => match crate::platform::spawn_tmux_pane(
+                    None,
+                    &workspace_path,
+                    &launch_command,
+                    &environment,
+                    &task.id,
+                    &provider,
+                ) {
+                    Ok(spawned) => Some(spawned.pane_id),
+                    Err(err) => {
+                        let message = format!("tmux agent launch failed: {err}");
+                        self.record_task_error(task_id, message.clone());
+                        return Err(message);
+                    }
+                },
+            }
+        } else {
+            None
+        };
         let now = crate::task::current_unix_ms();
         let previous = self.state.tasks.clone();
         let Some(stored) = self.state.tasks.find_mut(task_id) else {
             return Err(format!("task {task_id} no longer exists"));
         };
         stored.provider = Some(provider.clone());
-        stored.agent_command = Some(command);
+        stored.agent_command = Some(command.clone());
+        stored.tmux_pane_id = tmux_pane_id.clone();
         stored.error = None;
         stored.updated_at = now;
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
+            if let Some(pane_id) = tmux_pane_id {
+                let _ = crate::platform::kill_tmux_pane(&pane_id);
+            }
             return Err(format!("task launch metadata could not be saved: {err}"));
         }
-        let start = self.start_agent_with_environment(
-            AgentStartParams {
-                name: task.id.clone(),
-                kind: provider,
-                pane_id,
-                args: Vec::new(),
-                timeout_ms: None,
-            },
-            &environment,
-        );
-        if let Err(err) = start {
-            let message = self.agent_start_error_body(err).message;
-            self.record_task_error(task_id, message.clone());
-            return Err(message);
+        if tmux_pane_id.is_none() {
+            let start = self.start_agent_with_environment(
+                AgentStartParams {
+                    name: task.id.clone(),
+                    kind: provider,
+                    pane_id,
+                    args: agent_args,
+                    timeout_ms: None,
+                },
+                &environment,
+            );
+            if let Err(err) = start {
+                let message = self.agent_start_error_body(err).message;
+                self.record_task_error(task_id, message.clone());
+                return Err(message);
+            }
         }
         self.transition_task(
             task_id,
@@ -442,6 +562,15 @@ impl App {
                 return;
             }
         };
+        if let Some(tmux_pane_id) = task.tmux_pane_id.as_deref() {
+            if let Err(err) = crate::platform::send_tmux_text(tmux_pane_id, &prompt) {
+                self.record_task_error(
+                    &task_id,
+                    format!("initial tmux agent prompt failed: {err}"),
+                );
+            }
+            return;
+        }
         let request_id = format!("task-agent-prompt:{task_id}");
         match self.queue_agent_prompt(
             request_id,
@@ -761,16 +890,125 @@ impl App {
         )
     }
 
-    pub(super) fn handle_task_close(&mut self, id: String, target: TaskTarget) -> String {
-        let should_teardown = self
-            .state
-            .tasks
-            .find(&target.task_id)
-            .is_some_and(|task| task.status != TaskStatus::Closed);
-        if should_teardown {
-            if let Err(err) = self.run_task_teardown(&target.task_id) {
-                tracing::warn!(task_id = %target.task_id, error = %err, "task teardown failed");
+    pub(super) fn handle_task_retry(&mut self, id: String, target: TaskTarget) -> String {
+        let Some(mut task) = self.state.tasks.find(&target.task_id).cloned() else {
+            return task_not_found(id, &target.task_id);
+        };
+        if task.status == TaskStatus::Closed {
+            return encode_error(id, "invalid_params", "closed tasks cannot be retried");
+        }
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        if task.location == TaskLocationMode::Worktree
+            && task.auto_provisioned_worktree
+            && task
+                .worktree_path
+                .as_deref()
+                .is_none_or(|path| !path.is_dir())
+        {
+            let provisioned = provision_task_worktree(
+                &project,
+                &self.state.worktree_directory,
+                &task.name,
+                task.branch.as_deref(),
+            );
+            let (path, branch) = match provisioned {
+                Ok(value) => value,
+                Err(message) => {
+                    self.record_task_error(&task.id, message.clone());
+                    return encode_error(id, "task_workspace_provision_failed", message);
+                }
+            };
+            let previous = self.state.tasks.clone();
+            let Some(stored) = self.state.tasks.find_mut(&task.id) else {
+                let _ = cleanup_task_worktree(
+                    &Task {
+                        worktree_path: Some(path),
+                        branch: Some(branch),
+                        auto_provisioned_worktree: true,
+                        ..task.clone()
+                    },
+                    &project,
+                );
+                return task_not_found(id, &task.id);
+            };
+            stored.worktree_path = Some(path);
+            stored.branch = Some(branch);
+            stored.error = None;
+            stored.updated_at = crate::task::current_unix_ms();
+            task = stored.clone();
+            if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+                self.state.tasks = previous;
+                let _ = cleanup_task_worktree(&task, &project);
+                return encode_error(id, "task_save_failed", err.to_string());
             }
+        }
+        if task.status != TaskStatus::Queued {
+            if let Err(err) = self.transition_task(
+                &task.id,
+                TaskStatus::Queued,
+                Some("task retry requested".to_owned()),
+            ) {
+                return encode_error(id, "task_save_failed", err);
+            }
+        }
+        let previous = self.state.tasks.clone();
+        let Some(stored) = self.state.tasks.find_mut(&task.id) else {
+            return task_not_found(id, &task.id);
+        };
+        stored.error = None;
+        stored.current_step = None;
+        stored.closed_at = None;
+        stored.updated_at = crate::task::current_unix_ms();
+        if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
+            self.state.tasks = previous;
+            return encode_error(id, "task_save_failed", err.to_string());
+        }
+        if task.location == TaskLocationMode::Worktree {
+            if let Err(err) = self.run_task_lifecycle(&task.id) {
+                return encode_error(id, "task_retry_failed", err);
+            }
+        }
+        if let Err(err) = self.start_task_with_runtime(&task.id) {
+            self.record_task_error(&task.id, err.clone());
+            return encode_error(id, "task_retry_failed", err);
+        }
+        let Some(task) = self.state.tasks.find(&task.id).cloned() else {
+            return task_not_found(id, &task.id);
+        };
+        let runtime = self.task_runtime_info(&task);
+        encode_success(
+            id,
+            ResponseResult::TaskOpened {
+                task: self.task_info(&task),
+                runtime,
+            },
+        )
+    }
+
+    pub(super) fn handle_task_close(&mut self, id: String, target: TaskTarget) -> String {
+        let Some(existing_task) = self.state.tasks.find(&target.task_id).cloned() else {
+            return task_not_found(id, &target.task_id);
+        };
+        let mut close_error = None;
+        if existing_task.status != TaskStatus::Closed {
+            if let Err(err) = self.run_task_teardown(&target.task_id) {
+                close_error = Some(err);
+            }
+        }
+        if close_error.is_none() {
+            if let Some(task) = self.state.tasks.find(&target.task_id).cloned() {
+                if let Some(project) = self.state.projects.find(&task.project_id) {
+                    if let Err(err) = cleanup_task_worktree(&task, project) {
+                        close_error = Some(format!("task worktree teardown failed: {err}"));
+                    }
+                }
+            }
+        }
+        if let Some(err) = close_error {
+            self.record_task_error(&target.task_id, err.clone());
+            return encode_error(id, "task_close_failed", err);
         }
         let previous = self.state.tasks.clone();
         let Some(task) = self.state.tasks.find_mut(&target.task_id) else {
@@ -872,6 +1110,13 @@ impl App {
         let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
             return project_not_found(id, &params.project_id);
         };
+        let remote_endpoint_id = match params.remote_endpoint_id.clone() {
+            Some(endpoint_id) => match normalize_remote_endpoint_id(Some(endpoint_id)) {
+                Ok(endpoint_id) => endpoint_id,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => project.remote_endpoint_id.clone(),
+        };
         let current_dir = match std::env::current_dir() {
             Ok(path) => path,
             Err(err) => return encode_error(id, "github_auth_failed", err.to_string()),
@@ -905,30 +1150,57 @@ impl App {
             Ok(issue) => issue,
             Err(message) => return encode_error(id, "github_response_invalid", message),
         };
-        let worktree_path = match params.location {
-            TaskLocationMode::Repository => None,
-            TaskLocationMode::Worktree => {
-                let Some(path) = params.worktree_path.as_deref() else {
+        let requested_branch = clean_optional(params.branch);
+        let location = if self.state.create_worktrees_by_default
+            && params.location == TaskLocationMode::Repository
+            && params.worktree_path.is_none()
+        {
+            TaskLocationMode::Worktree
+        } else {
+            params.location
+        };
+        let (worktree_path, branch, auto_provisioned_worktree) = match location {
+            TaskLocationMode::Repository => {
+                if params
+                    .worktree_path
+                    .as_deref()
+                    .is_some_and(|path| !path.trim().is_empty())
+                {
                     return encode_error(
                         id,
                         "invalid_params",
-                        "worktree tasks require an existing worktree path",
+                        "repository tasks must not specify a worktree path",
                     );
-                };
-                let path = match std::fs::canonicalize(path) {
-                    Ok(path) if path.is_dir() => path,
-                    Ok(_) => {
-                        return encode_error(
-                            id,
-                            "invalid_params",
-                            "task worktree path must be a directory",
-                        )
+                }
+                (None, requested_branch, false)
+            }
+            TaskLocationMode::Worktree => {
+                if let Some(path) = params.worktree_path.as_deref() {
+                    let path = match std::fs::canonicalize(path) {
+                        Ok(path) if path.is_dir() => path,
+                        Ok(_) => {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                "task worktree path must be a directory",
+                            )
+                        }
+                        Err(err) => return encode_error(id, "invalid_params", err.to_string()),
+                    };
+                    (Some(path), requested_branch, false)
+                } else {
+                    match provision_task_worktree(
+                        &project,
+                        &self.state.worktree_directory,
+                        &issue.title,
+                        requested_branch.as_deref(),
+                    ) {
+                        Ok((path, branch)) => (Some(path), Some(branch), true),
+                        Err(message) => {
+                            return encode_error(id, "task_workspace_provision_failed", message)
+                        }
                     }
-                    Err(err) => {
-                        return encode_error(id, "invalid_params", err.to_string());
-                    }
-                };
-                Some(path)
+                }
             }
         };
         let provider = match project.default_agent.clone() {
@@ -955,11 +1227,11 @@ impl App {
                 || context.clone(),
                 |prompt| format!("{context}\n\n{prompt}"),
             );
-        let task = Task::new(
+        let mut task = Task::new(
             params.project_id,
             issue.title.clone(),
-            params.location,
-            clean_optional(params.branch),
+            location,
+            branch,
             worktree_path,
             provider,
             None,
@@ -970,6 +1242,7 @@ impl App {
             None,
             None,
         );
+        task.auto_provisioned_worktree = auto_provisioned_worktree;
         let issue_context = crate::task::GitHubIssueContext {
             repository: issue.repository.clone(),
             number: issue.number,
@@ -980,12 +1253,19 @@ impl App {
             assignees: issue.assignees.clone(),
             state: issue.state.clone(),
         };
-        let mut task = task;
+        task.remote_endpoint_id = remote_endpoint_id;
         task.github_issue = Some(issue_context);
         let previous = self.state.tasks.clone();
-        self.state.tasks.insert(task.clone());
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
+            if auto_provisioned_worktree {
+                if let Err(cleanup_error) = cleanup_task_worktree(&task, &project) {
+                    tracing::warn!(
+                        error = %cleanup_error,
+                        "failed to clean up automatically provisioned GitHub issue worktree"
+                    );
+                }
+            }
             return encode_error(id, "task_save_failed", err.to_string());
         }
         let task_id = task.id.clone();
@@ -1146,6 +1426,13 @@ impl App {
         let Some(project) = self.state.projects.find(&params.project_id).cloned() else {
             return project_not_found(id, &params.project_id);
         };
+        let remote_endpoint_id = match params.remote_endpoint_id.clone() {
+            Some(endpoint_id) => match normalize_remote_endpoint_id(Some(endpoint_id)) {
+                Ok(endpoint_id) => endpoint_id,
+                Err(message) => return encode_error(id, "invalid_params", message),
+            },
+            None => project.remote_endpoint_id.clone(),
+        };
         if !project
             .external_trackers
             .iter()
@@ -1157,28 +1444,57 @@ impl App {
                 "tracker is not enabled for this project",
             );
         }
-        let worktree_path = match params.location {
-            TaskLocationMode::Repository => None,
-            TaskLocationMode::Worktree => {
-                let Some(path) = params.worktree_path.as_deref() else {
+        let requested_branch = clean_optional(params.branch);
+        let location = if self.state.create_worktrees_by_default
+            && params.location == TaskLocationMode::Repository
+            && params.worktree_path.is_none()
+        {
+            TaskLocationMode::Worktree
+        } else {
+            params.location
+        };
+        let (worktree_path, branch, auto_provisioned_worktree) = match location {
+            TaskLocationMode::Repository => {
+                if params
+                    .worktree_path
+                    .as_deref()
+                    .is_some_and(|path| !path.trim().is_empty())
+                {
                     return encode_error(
                         id,
                         "invalid_params",
-                        "worktree tasks require an existing worktree path",
+                        "repository tasks must not specify a worktree path",
                     );
-                };
-                let path = match std::fs::canonicalize(path) {
-                    Ok(path) if path.is_dir() => path,
-                    Ok(_) => {
-                        return encode_error(
-                            id,
-                            "invalid_params",
-                            "worktree path is not a directory",
-                        )
+                }
+                (None, requested_branch, false)
+            }
+            TaskLocationMode::Worktree => {
+                if let Some(path) = params.worktree_path.as_deref() {
+                    let path = match std::fs::canonicalize(path) {
+                        Ok(path) if path.is_dir() => path,
+                        Ok(_) => {
+                            return encode_error(
+                                id,
+                                "invalid_params",
+                                "task worktree path must be a directory",
+                            )
+                        }
+                        Err(err) => return encode_error(id, "invalid_params", err.to_string()),
+                    };
+                    (Some(path), requested_branch, false)
+                } else {
+                    match provision_task_worktree(
+                        &project,
+                        &self.state.worktree_directory,
+                        &params.issue.title,
+                        requested_branch.as_deref(),
+                    ) {
+                        Ok((path, branch)) => (Some(path), Some(branch), true),
+                        Err(message) => {
+                            return encode_error(id, "task_workspace_provision_failed", message)
+                        }
                     }
-                    Err(err) => return encode_error(id, "invalid_params", err.to_string()),
-                };
-                Some(path)
+                }
             }
         };
         let context = format!(
@@ -1202,8 +1518,8 @@ impl App {
         let mut task = Task::new(
             params.project_id,
             params.issue.title.clone(),
-            params.location,
-            clean_optional(params.branch),
+            location,
+            branch,
             worktree_path,
             project.default_agent.clone(),
             None,
@@ -1214,11 +1530,21 @@ impl App {
             None,
             None,
         );
+        task.auto_provisioned_worktree = auto_provisioned_worktree;
+        task.remote_endpoint_id = remote_endpoint_id;
         task.external_issue = Some(params.issue.clone());
         let previous = self.state.tasks.clone();
         self.state.tasks.insert(task.clone());
         if let Err(err) = crate::persist::save_tasks(&self.state.tasks) {
             self.state.tasks = previous;
+            if auto_provisioned_worktree {
+                if let Err(cleanup_error) = cleanup_task_worktree(&task, &project) {
+                    tracing::warn!(
+                        error = %cleanup_error,
+                        "failed to clean up automatically provisioned external issue worktree"
+                    );
+                }
+            }
             return encode_error(id, "task_save_failed", err.to_string());
         }
         let task_id = task.id.clone();
@@ -1438,6 +1764,93 @@ impl App {
         )
     }
 
+    pub(super) fn handle_task_file_list(
+        &mut self,
+        id: String,
+        params: crate::api::schema::TaskFileListParams,
+    ) -> String {
+        let Some(task) = self.state.tasks.find(&params.task_id).cloned() else {
+            return task_not_found(id, &params.task_id);
+        };
+        let Some(project) = self.state.projects.find(&task.project_id).cloned() else {
+            return project_not_found(id, &task.project_id);
+        };
+        let Some(worktree_path) = task_workspace_path(&task, &project) else {
+            return encode_error(id, "task_workspace_missing", "task has no workspace path");
+        };
+        if !worktree_path.is_dir() {
+            return encode_error(
+                id,
+                "task_workspace_missing",
+                "task workspace is no longer available",
+            );
+        }
+        let mut directories = vec![worktree_path.clone()];
+        let mut files = Vec::new();
+        while let Some(directory) = directories.pop() {
+            let entries = match std::fs::read_dir(&directory) {
+                Ok(entries) => entries,
+                Err(err) => return encode_error(id, "task_file_list_failed", err.to_string()),
+            };
+            for entry in entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(err) => {
+                        return encode_error(id, "task_file_list_failed", err.to_string());
+                    }
+                };
+                let metadata = match entry.file_type() {
+                    Ok(metadata) => metadata,
+                    Err(err) => {
+                        return encode_error(id, "task_file_list_failed", err.to_string());
+                    }
+                };
+                if metadata.is_symlink() {
+                    continue;
+                }
+                let path = entry.path();
+                let Ok(relative) = path.strip_prefix(&worktree_path) else {
+                    continue;
+                };
+                let relative = relative.to_string_lossy().replace('\\', "/");
+                if is_generated_task_file_path(&relative) {
+                    continue;
+                }
+                if metadata.is_dir() {
+                    files.push(crate::api::schema::TaskFileEntry {
+                        path: relative,
+                        is_dir: true,
+                    });
+                    directories.push(path);
+                } else if metadata.is_file() {
+                    files.push(crate::api::schema::TaskFileEntry {
+                        path: relative,
+                        is_dir: false,
+                    });
+                }
+                if files.len() > 20_000 {
+                    return encode_error(
+                        id,
+                        "task_file_list_failed",
+                        "task workspace contains too many entries",
+                    );
+                }
+            }
+        }
+        files.sort_by(|left, right| {
+            left.path
+                .cmp(&right.path)
+                .then_with(|| left.is_dir.cmp(&right.is_dir))
+        });
+        encode_success(
+            id,
+            ResponseResult::TaskFileList {
+                task_id: task.id,
+                files,
+            },
+        )
+    }
+
     pub(super) fn handle_task_file_read(
         &mut self,
         id: String,
@@ -1525,6 +1938,38 @@ impl App {
         let Some(parent) = target.parent() else {
             return encode_error(id, "invalid_params", "file path has no parent directory");
         };
+        let canonical_root = match std::fs::canonicalize(&worktree_path) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(id, "task_workspace_missing", err.to_string());
+            }
+        };
+        let mut existing_parent = parent;
+        while std::fs::symlink_metadata(existing_parent).is_err() {
+            existing_parent = match existing_parent.parent() {
+                Some(parent) => parent,
+                None => {
+                    return encode_error(
+                        id,
+                        "task_file_write_failed",
+                        "file path has no existing ancestor",
+                    )
+                }
+            };
+        }
+        let canonical_existing_parent = match std::fs::canonicalize(existing_parent) {
+            Ok(path) => path,
+            Err(err) => {
+                return encode_error(
+                    id,
+                    "task_file_write_failed",
+                    format!("file path ancestor is not accessible: {err}"),
+                );
+            }
+        };
+        if !canonical_existing_parent.starts_with(&canonical_root) {
+            return encode_error(id, "invalid_params", "file path escapes the task workspace");
+        }
         if let Err(err) = std::fs::create_dir_all(parent) {
             return encode_error(
                 id,
@@ -1532,12 +1977,6 @@ impl App {
                 format!("parent directory could not be created: {err}"),
             );
         }
-        let canonical_root = match std::fs::canonicalize(&worktree_path) {
-            Ok(path) => path,
-            Err(err) => {
-                return encode_error(id, "task_workspace_missing", err.to_string());
-            }
-        };
         let canonical_parent = match std::fs::canonicalize(parent) {
             Ok(path) => path,
             Err(err) => {
@@ -1832,6 +2271,7 @@ impl App {
         let runtime = self.task_runtime_info(task);
         TaskInfo {
             task_id: task.id.clone(),
+            remote_endpoint_id: task.remote_endpoint_id.clone(),
             project_id: task.project_id.clone(),
             name: task.name.clone(),
             location: task.location,
@@ -1840,6 +2280,7 @@ impl App {
                 .worktree_path
                 .as_deref()
                 .map(crate::project::display_path),
+            auto_provisioned_worktree: task.auto_provisioned_worktree,
             provider: task.provider.clone(),
             model: task.model.clone(),
             prompt: task.prompt.clone(),
@@ -1899,6 +2340,7 @@ impl App {
             workspace_id: task.workspace_id.clone(),
             tab_id: task.tab_id.clone(),
             pane_id: task.pane_id.clone(),
+            tmux_pane_id: task.tmux_pane_id.clone(),
             runtime_available: runtime.available,
             runtime_message: runtime.message,
         }
@@ -2011,6 +2453,9 @@ fn inject_resource_prompt(prompt: Option<String>, resources: &[Resource]) -> Opt
         if resource.content.is_empty() {
             continue;
         }
+        if resource.kind == crate::resource::ResourceKind::Mcp {
+            continue;
+        }
         let kind = match resource.kind {
             crate::resource::ResourceKind::Prompt => "prompt",
             crate::resource::ResourceKind::Skill => "skill",
@@ -2036,6 +2481,184 @@ fn task_workspace_path(
         TaskLocationMode::Worktree => task.worktree_path.clone(),
     }
 }
+fn task_resource_storage_dir(task_id: &str) -> std::path::PathBuf {
+    crate::config::config_dir()
+        .join("task-resources")
+        .join(hex_path_component(task_id))
+}
+
+fn ensure_task_resource_directory(path: &std::path::Path) -> Result<(), String> {
+    let mut missing = Vec::new();
+    let mut current = Some(path);
+    while let Some(directory) = current {
+        if directory.is_dir() {
+            break;
+        }
+        missing.push(directory);
+        current = directory.parent();
+    }
+    for directory in missing.into_iter().rev() {
+        match crate::platform::create_private_state_dir(directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                return Err(format!(
+                    "task resource storage could not be created: {error}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn hex_path_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len().saturating_mul(2));
+    for byte in value.as_bytes() {
+        use std::fmt::Write;
+        let _ = write!(encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+fn activate_task_resources(
+    task: &Task,
+    resources: &[Resource],
+    provider: &str,
+) -> Result<TaskResourceActivation, String> {
+    if resources.is_empty() {
+        return Ok(TaskResourceActivation::default());
+    }
+    let root = task_resource_storage_dir(&task.id);
+    ensure_task_resource_directory(&root)?;
+    let skills = root.join("skills");
+    let mut mcp_servers = serde_json::Map::new();
+    let mut manifest = Vec::with_capacity(resources.len());
+    let mut has_skills = false;
+    for resource in resources {
+        let kind = match resource.kind {
+            crate::resource::ResourceKind::Mcp => "mcp",
+            crate::resource::ResourceKind::Prompt => "prompt",
+            crate::resource::ResourceKind::Skill => "skill",
+        };
+        let path = match resource.kind {
+            crate::resource::ResourceKind::Skill => {
+                has_skills = true;
+                ensure_task_resource_directory(&skills)?;
+                let path = skills.join(format!("{}.md", hex_path_component(&resource.id)));
+                write_task_resource_file(&path, &resource.content)?;
+                Some(path)
+            }
+            crate::resource::ResourceKind::Mcp => {
+                let value = serde_json::from_str::<serde_json::Value>(&resource.content).map_err(
+                    |error| format!("MCP resource {} is invalid JSON: {error}", resource.id),
+                )?;
+                if let Some(servers) = value
+                    .get("mcpServers")
+                    .and_then(serde_json::Value::as_object)
+                {
+                    for (name, server) in servers {
+                        mcp_servers.insert(name.clone(), server.clone());
+                    }
+                } else {
+                    mcp_servers.insert(resource.name.clone(), value);
+                }
+                None
+            }
+            crate::resource::ResourceKind::Prompt => None,
+        };
+        manifest.push(serde_json::json!({
+            "id": resource.id,
+            "kind": kind,
+            "name": resource.name,
+            "path": path.as_ref().map(|path| crate::project::display_path(path)),
+        }));
+    }
+    let manifest_path = root.join("manifest.json");
+    write_task_resource_file(
+        &manifest_path,
+        &serde_json::to_string_pretty(&manifest)
+            .map_err(|error| format!("task resource manifest could not be encoded: {error}"))?,
+    )?;
+    let mcp_config_path = if mcp_servers.is_empty() {
+        None
+    } else {
+        let path = root.join("mcp.json");
+        let config = serde_json::json!({ "mcpServers": mcp_servers });
+        write_task_resource_file(
+            &path,
+            &serde_json::to_string_pretty(&config)
+                .map_err(|error| format!("MCP resource config could not be encoded: {error}"))?,
+        )?;
+        Some(path)
+    };
+    let mut environment = BTreeMap::from([(
+        "HERDR_RESOURCE_MANIFEST".to_owned(),
+        crate::project::display_path(&manifest_path),
+    )]);
+    if has_skills {
+        environment.insert(
+            "HERDR_SKILLS_DIR".to_owned(),
+            crate::project::display_path(&skills),
+        );
+    }
+    if let Some(path) = &mcp_config_path {
+        environment.insert(
+            "HERDR_MCP_CONFIG".to_owned(),
+            crate::project::display_path(path),
+        );
+    }
+    environment.insert("HERDR_RESOURCE_PROVIDER".to_owned(), provider.to_owned());
+    Ok(TaskResourceActivation {
+        environment,
+        mcp_config_path,
+    })
+}
+
+fn write_task_resource_file(path: &std::path::Path, content: &str) -> Result<(), String> {
+    let Some(parent) = path.parent() else {
+        return Err(format!(
+            "task resource path has no parent: {}",
+            path.display()
+        ));
+    };
+    std::fs::create_dir_all(parent)
+        .map_err(|error| format!("task resource storage could not be created: {error}"))?;
+    let sequence = NEXT_TASK_RESOURCE_TEMP.fetch_add(1, Ordering::Relaxed);
+    let temp_path = parent.join(format!(
+        ".task-resource-{}-{sequence}.tmp",
+        std::process::id()
+    ));
+    let mut file = crate::platform::create_private_state_file(&temp_path)
+        .map_err(|error| format!("task resource file could not be created: {error}"))?;
+    if let Err(error) =
+        std::io::Write::write_all(&mut file, content.as_bytes()).and_then(|()| file.sync_all())
+    {
+        drop(file);
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!("task resource file could not be written: {error}"));
+    }
+    drop(file);
+    if let Err(error) = crate::platform::replace_file(&temp_path, path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!(
+            "task resource file could not be activated: {error}"
+        ));
+    }
+    Ok(())
+}
+
+fn provider_agent_args(provider: &str, mcp_config_path: Option<&std::path::Path>) -> Vec<String> {
+    if provider.eq_ignore_ascii_case("claude") {
+        if let Some(path) = mcp_config_path {
+            return vec![
+                "--mcp-config".to_owned(),
+                crate::project::display_path(path),
+            ];
+        }
+    }
+    Vec::new()
+}
+
 fn task_environment(
     task: &Task,
     project: &crate::project::Project,
@@ -2397,6 +3020,98 @@ fn untracked_file_patch(
     }
     Ok(Some(patch))
 }
+fn provision_task_worktree(
+    project: &crate::project::Project,
+    default_worktree_root: &std::path::Path,
+    task_name: &str,
+    requested_branch: Option<&str>,
+) -> Result<(std::path::PathBuf, String), String> {
+    let worktree_root = project
+        .worktree_root
+        .as_deref()
+        .unwrap_or(default_worktree_root);
+    let branch = requested_branch
+        .filter(|branch| !branch.trim().is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| crate::worktree::branch_name_for_task(task_name));
+    let path = crate::worktree::default_checkout_path(worktree_root, &project.name, &branch);
+    if path.exists() {
+        return Err(format!(
+            "automatic task worktree path already exists: {}",
+            path.display()
+        ));
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("task worktree parent could not be created: {error}"))?;
+    }
+    let base = project
+        .worktree_base
+        .as_deref()
+        .unwrap_or(crate::project::DEFAULT_WORKTREE_BASE);
+    let add = crate::worktree::build_worktree_add_new_branch_command(
+        &project.root_path,
+        &path,
+        &branch,
+        base,
+        true,
+    );
+    if let Err(error) = crate::worktree::run_worktree_command(&add) {
+        return Err(format!("task worktree provisioning failed: {error}"));
+    }
+    if let Err(error) = crate::worktree::preserve_ignored_files(
+        &project.root_path,
+        &path,
+        &project.preserve_patterns,
+    ) {
+        let remove =
+            crate::worktree::build_worktree_remove_command(&project.root_path, &path, true, true);
+        let _ = crate::worktree::run_worktree_remove_command_with_recovery(
+            &remove,
+            &project.root_path,
+            &path,
+            true,
+            true,
+        );
+        return Err(format!("task worktree provisioning failed: {error}"));
+    }
+    Ok((path, branch))
+}
+fn cleanup_task_worktree(task: &Task, project: &crate::project::Project) -> Result<(), String> {
+    if !task.auto_provisioned_worktree {
+        return Ok(());
+    }
+    let Some(path) = task.worktree_path.as_deref() else {
+        return Ok(());
+    };
+    let remove =
+        crate::worktree::build_worktree_remove_command(&project.root_path, path, true, true);
+    crate::worktree::run_worktree_remove_command_with_recovery(
+        &remove,
+        &project.root_path,
+        path,
+        true,
+        true,
+    )
+}
+
+fn is_generated_task_file_path(path: &str) -> bool {
+    path.split('/').any(|component| {
+        matches!(
+            component,
+            ".git"
+                | ".herdr"
+                | "target"
+                | "node_modules"
+                | "dist"
+                | "build"
+                | "out"
+                | ".next"
+                | "__pycache__"
+                | "coverage"
+        )
+    })
+}
 
 fn safe_task_relative_path(raw: &str) -> Option<std::path::PathBuf> {
     let normalized = raw.trim().replace('\\', "/");
@@ -2476,6 +3191,20 @@ fn lifecycle_output(stdout: &[u8], stderr: &[u8]) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
+fn normalize_remote_endpoint_id(value: Option<String>) -> Result<Option<String>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let value = value.trim().to_owned();
+    if value.is_empty() {
+        return Ok(None);
+    }
+    if value.len() > 256 || value.chars().any(char::is_control) {
+        return Err("remote endpoint id must be printable and at most 256 bytes".to_owned());
+    }
+    Ok(Some(value))
+}
+
 fn clean_optional(value: Option<String>) -> Option<String> {
     value.and_then(|value| {
         let value = value.trim().to_owned();
@@ -2493,4 +3222,44 @@ fn project_not_found(id: String, project_id: &str) -> String {
 
 fn task_not_found(id: String, task_id: &str) -> String {
     encode_error(id, "task_not_found", format!("task {task_id} not found"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_generated_task_file_path, safe_task_relative_path};
+
+    #[test]
+    fn task_file_paths_stay_inside_the_task_root() {
+        assert_eq!(
+            safe_task_relative_path("src/main.rs"),
+            Some(std::path::PathBuf::from("src/main.rs"))
+        );
+        for path in [
+            "",
+            ".",
+            "../secret",
+            "src/../../secret",
+            "/etc/passwd",
+            r"C:\secret",
+        ] {
+            assert_eq!(
+                safe_task_relative_path(path),
+                None,
+                "path should be rejected: {path}"
+            );
+        }
+        assert_eq!(safe_task_relative_path(".git/config"), None);
+    }
+
+    #[test]
+    fn generated_directories_are_hidden_at_any_depth() {
+        for path in [
+            "dist/assets/app.js",
+            "src/target/debug/app",
+            "pkg/.next/cache",
+        ] {
+            assert!(is_generated_task_file_path(path), "generated path: {path}");
+        }
+        assert!(!is_generated_task_file_path("src/distance/app.js"));
+    }
 }

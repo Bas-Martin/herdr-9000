@@ -99,6 +99,7 @@ fn project_create(args: &[String]) -> std::io::Result<i32> {
     super::runtime::project_create(ProjectCreateParams {
         name,
         root_path,
+        remote_endpoint_id: None,
         open,
         focus: open && focus,
         worktree_root: None,

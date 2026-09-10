@@ -1081,9 +1081,10 @@ impl App {
             Method::TaskOpen(params) => return self.handle_task_open(request.id, params),
             Method::TaskRename(params) => return self.handle_task_rename(request.id, params),
             Method::TaskResources(params) => return self.handle_task_resources(request.id, params),
+            Method::TaskRetry(target) => return self.handle_task_retry(request.id, target),
             Method::TaskClose(target) => return self.handle_task_close(request.id, target),
-            Method::TaskDiff(params) => return self.handle_task_diff(request.id, params),
             Method::TaskFileRead(params) => return self.handle_task_file_read(request.id, params),
+            Method::TaskFileList(params) => return self.handle_task_file_list(request.id, params),
             Method::TaskFileWrite(params) => {
                 return self.handle_task_file_write(request.id, params)
             }

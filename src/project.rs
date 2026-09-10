@@ -32,6 +32,8 @@ pub(crate) struct Project {
     pub(crate) name: String,
     pub(crate) root_path: PathBuf,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) remote_endpoint_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) worktree_root: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) worktree_base: Option<String>,
@@ -119,6 +121,7 @@ impl Project {
             id,
             name,
             root_path,
+            remote_endpoint_id: None,
             worktree_root,
             worktree_base: None,
             default_agent: None,

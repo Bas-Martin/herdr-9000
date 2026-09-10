@@ -105,6 +105,8 @@ pub(crate) struct ClientShellConfig {
     pub(super) local_config_path: std::path::PathBuf,
     pub(super) preferences_path: Option<std::path::PathBuf>,
     pub(super) preferences: preferences::ClientChromePreferences,
+    pub(super) auto_trust_worktrees: bool,
+    pub(super) create_worktrees_by_default: bool,
     pub(super) startup_config_diagnostic: Option<String>,
     pub(super) startup_onboarding: bool,
 }
@@ -191,6 +193,7 @@ pub(super) struct ShellHitMap {
     pub(super) worktree_rows: Vec<(Rect, usize)>,
     pub(super) task_rows: Vec<(Rect, usize)>,
     pub(super) tmux_rows: Vec<(Rect, usize)>,
+    pub(super) resource_rows: Vec<(Rect, usize)>,
     pub(super) task_editor_path: Rect,
     pub(super) task_editor_content: Rect,
     pub(super) task_editor_save: Rect,
@@ -314,6 +317,10 @@ pub(crate) enum ClientShellAction {
     },
     ClipboardWrite(Vec<u8>),
     OpenSafeWebUrl(String),
+    OpenWorktreeApp {
+        app: ClientWorktreeExternalApp,
+        path: String,
+    },
     ActivateEndpoint {
         endpoint_id: ClientEndpointId,
         target: Option<ClientEndpointFocusTarget>,
@@ -354,14 +361,18 @@ pub(super) enum ClientShellOverlayKind {
     WorktreeCreate,
     WorktreeOpen,
     WorktreeRemove,
+    WorktreeApps,
     ContextMenu,
     GlobalMenu,
     Settings,
     ProjectCreate,
-    ProjectSettings,
     ProjectPatterns,
+    ProjectSettings,
     TaskBrowser,
+    TaskWebBrowser,
     TaskFileEditor,
+    ResourceLibrary,
+    ResourceEditor,
     TmuxPanes,
 }
 
@@ -474,6 +485,7 @@ pub(super) enum ClientSettingsSection {
     Sound,
     Toast,
     Integrations,
+    Worktrees,
 }
 
 impl ClientSettingsSection {
@@ -483,6 +495,7 @@ impl ClientSettingsSection {
         Self::Sound,
         Self::Toast,
         Self::Integrations,
+        Self::Worktrees,
     ];
 
     pub(super) fn label(self) -> &'static str {
@@ -492,6 +505,7 @@ impl ClientSettingsSection {
             Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
+            Self::Worktrees => "worktrees",
         }
     }
 }
@@ -506,6 +520,8 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) integration_messages: Vec<String>,
     pub(super) loading_integrations: bool,
     pub(super) installing_integrations: bool,
+    pub(super) auto_trust_worktrees: bool,
+    pub(super) create_worktrees_by_default: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -579,6 +595,33 @@ pub(super) struct ClientWorktreeOpenOverlay {
     pub(super) opening: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ClientWorktreeExternalApp {
+    VsCode,
+    FileExplorer,
+    Terminal,
+    VisualStudio,
+}
+
+impl ClientWorktreeExternalApp {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::VsCode => "VS Code",
+            Self::FileExplorer => "File Explorer",
+            Self::Terminal => "Terminal",
+            Self::VisualStudio => "Visual Studio",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct ClientWorktreeAppsOverlay {
+    pub(super) path: String,
+    pub(super) selected: usize,
+    pub(super) error: Option<String>,
+    pub(super) opening: bool,
+}
+
 impl ClientWorktreeOpenOverlay {
     pub(super) fn filtered_indices(&self) -> Vec<usize> {
         self.entries
@@ -610,6 +653,7 @@ pub(super) struct ClientWorktreeRemoveOverlay {
 pub(super) enum ClientContextMenuAction {
     Rename,
     ProjectSettings,
+    OpenExternalApp,
     Close,
     NewWorktree,
     OpenWorktree,
@@ -719,6 +763,62 @@ pub(super) struct ClientTaskBrowserOverlay {
     pub(super) opening: bool,
     pub(super) error: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientTaskBrowserField {
+    Url,
+    ProfileName,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientTaskWebBrowserOverlay {
+    pub(super) task_id: String,
+    pub(super) profiles: Vec<preferences::ClientBrowserProfile>,
+    pub(super) selected_profile: usize,
+    pub(super) url: String,
+    pub(super) profile_name: String,
+    pub(super) field: ClientTaskBrowserField,
+    pub(super) preview_url: Option<String>,
+    pub(super) preview_body: Vec<String>,
+    pub(super) error: Option<String>,
+}
+#[derive(Debug)]
+pub(super) struct ClientResourceLibraryOverlay {
+    pub(super) resources: Vec<crate::api::schema::ResourceInfo>,
+    pub(super) selected: usize,
+    pub(super) loading: bool,
+    pub(super) pending: bool,
+    pub(super) error: Option<String>,
+    pub(super) task_id: Option<String>,
+    pub(super) project_id: Option<String>,
+    pub(super) endpoint_id: Option<ClientEndpointId>,
+    pub(super) assigned_resource_ids: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ClientResourceEditorField {
+    Name,
+    Kind,
+    Scope,
+    Provider,
+    Content,
+}
+
+#[derive(Debug)]
+pub(super) struct ClientResourceEditorOverlay {
+    pub(super) resource_id: Option<String>,
+    pub(super) project_id: Option<String>,
+    pub(super) task_id: Option<String>,
+    pub(super) name: String,
+    pub(super) kind: String,
+    pub(super) scope: String,
+    pub(super) provider: String,
+    pub(super) content: String,
+    pub(super) field: ClientResourceEditorField,
+    pub(super) endpoint_id: Option<ClientEndpointId>,
+    pub(super) saving: bool,
+    pub(super) error: Option<String>,
+}
 #[derive(Debug)]
 pub(super) struct ClientTmuxPaneOverlay {
     pub(super) panes: Vec<crate::api::schema::TmuxPaneInfo>,
@@ -737,14 +837,31 @@ pub(super) enum ClientTaskFileEditorField {
 }
 
 #[derive(Debug)]
+pub(super) struct ClientTaskFileEditorTab {
+    pub(super) path: String,
+    pub(super) content: String,
+    pub(super) cursor: usize,
+    pub(super) dirty: bool,
+    pub(super) deleted: bool,
+}
+
+#[derive(Debug)]
 pub(super) struct ClientTaskFileEditorOverlay {
     pub(super) endpoint_id: ClientEndpointId,
     pub(super) task_id: String,
     pub(super) path: String,
     pub(super) content: String,
+    pub(super) find_query: String,
+    pub(super) replace_text: String,
+    pub(super) find_mode: Option<bool>,
     pub(super) field: ClientTaskFileEditorField,
     pub(super) cursor: usize,
     pub(super) loading: bool,
+    pub(super) files: Vec<crate::api::schema::TaskFileEntry>,
+    pub(super) selected_file: usize,
+    pub(super) tabs: Vec<ClientTaskFileEditorTab>,
+    pub(super) selected_tab: usize,
+    pub(super) dirty: bool,
     pub(super) saving: bool,
     pub(super) error: Option<String>,
 }
@@ -760,13 +877,17 @@ pub(super) enum ClientShellOverlay {
     WorktreeCreate(ClientWorktreeCreateOverlay),
     WorktreeOpen(ClientWorktreeOpenOverlay),
     WorktreeRemove(ClientWorktreeRemoveOverlay),
+    WorktreeApps(ClientWorktreeAppsOverlay),
     ContextMenu(ClientContextMenuOverlay),
     ProjectCreate(ClientProjectCreateOverlay),
     ProjectSettings(ClientProjectSettingsOverlay),
     ProjectPatterns(ClientProjectPatternsOverlay),
     GlobalMenu(ClientGlobalMenuOverlay),
     TaskBrowser(ClientTaskBrowserOverlay),
+    TaskWebBrowser(ClientTaskWebBrowserOverlay),
     TaskFileEditor(ClientTaskFileEditorOverlay),
+    ResourceLibrary(ClientResourceLibraryOverlay),
+    ResourceEditor(ClientResourceEditorOverlay),
     TmuxPanes(ClientTmuxPaneOverlay),
     Settings(ClientSettingsOverlay),
 }
@@ -784,14 +905,18 @@ impl ClientShellOverlay {
             Self::WorktreeCreate(_) => ClientShellOverlayKind::WorktreeCreate,
             Self::WorktreeOpen(_) => ClientShellOverlayKind::WorktreeOpen,
             Self::WorktreeRemove(_) => ClientShellOverlayKind::WorktreeRemove,
+            Self::WorktreeApps(_) => ClientShellOverlayKind::WorktreeApps,
             Self::ProjectCreate(_) => ClientShellOverlayKind::ProjectCreate,
             Self::ProjectSettings(_) => ClientShellOverlayKind::ProjectSettings,
             Self::ProjectPatterns(_) => ClientShellOverlayKind::ProjectPatterns,
             Self::GlobalMenu(_) => ClientShellOverlayKind::GlobalMenu,
-            Self::TaskBrowser(_) => ClientShellOverlayKind::TaskBrowser,
-            Self::TaskFileEditor(_) => ClientShellOverlayKind::TaskFileEditor,
-            Self::TmuxPanes(_) => ClientShellOverlayKind::TmuxPanes,
             Self::ContextMenu(_) => ClientShellOverlayKind::ContextMenu,
+            Self::TaskBrowser(_) => ClientShellOverlayKind::TaskBrowser,
+            Self::TaskWebBrowser(_) => ClientShellOverlayKind::TaskWebBrowser,
+            Self::TaskFileEditor(_) => ClientShellOverlayKind::TaskFileEditor,
+            Self::ResourceLibrary(_) => ClientShellOverlayKind::ResourceLibrary,
+            Self::ResourceEditor(_) => ClientShellOverlayKind::ResourceEditor,
+            Self::TmuxPanes(_) => ClientShellOverlayKind::TmuxPanes,
             Self::Settings(_) => ClientShellOverlayKind::Settings,
         }
     }
@@ -862,6 +987,9 @@ pub(super) enum PendingEndpointKind {
     TaskOpen {
         endpoint_id: ClientEndpointId,
     },
+    ResourceList,
+    ResourceAction,
+    TaskFileList,
     TaskFileRead,
     TmuxList,
     TmuxCapture,

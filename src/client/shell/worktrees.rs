@@ -57,6 +57,81 @@ impl ClientShellState {
         }
     }
 
+    pub(super) fn open_worktree_app_chooser(&mut self, path: String) {
+        if path.trim().is_empty() {
+            return;
+        }
+        self.overlay = Some(ClientShellOverlay::WorktreeApps(
+            ClientWorktreeAppsOverlay {
+                path,
+                selected: 0,
+                error: None,
+                opening: false,
+            },
+        ));
+    }
+
+    pub(super) fn route_worktree_app_key(
+        &mut self,
+        key: &crate::input::TerminalKey,
+        outcome: &mut ClientShellInput,
+    ) -> bool {
+        let Some(ClientShellOverlay::WorktreeApps(apps)) = self.overlay.as_mut() else {
+            return false;
+        };
+        let (code, modifiers) = crate::config::normalize_key_combo((key.code, key.modifiers));
+        match code {
+            crossterm::event::KeyCode::Esc if modifiers.is_empty() && !apps.opening => {
+                self.overlay = None;
+            }
+            crossterm::event::KeyCode::Up if modifiers.is_empty() && !apps.opening => {
+                apps.selected = apps.selected.saturating_sub(1);
+            }
+            crossterm::event::KeyCode::Down if modifiers.is_empty() && !apps.opening => {
+                apps.selected = (apps.selected + 1).min(3);
+            }
+            crossterm::event::KeyCode::Enter if modifiers.is_empty() && !apps.opening => {
+                let app = [
+                    ClientWorktreeExternalApp::VsCode,
+                    ClientWorktreeExternalApp::FileExplorer,
+                    ClientWorktreeExternalApp::Terminal,
+                    ClientWorktreeExternalApp::VisualStudio,
+                ][apps.selected];
+                let path = apps.path.clone();
+                apps.opening = true;
+                apps.error = None;
+                outcome
+                    .actions
+                    .push(ClientShellAction::OpenWorktreeApp { app, path });
+            }
+            _ => return true,
+        }
+        outcome.repaint = true;
+        true
+    }
+
+    pub(crate) fn worktree_app_result(&mut self, error: Option<String>) -> bool {
+        let Some(ClientShellOverlay::WorktreeApps(apps)) = self.overlay.as_mut() else {
+            return false;
+        };
+        apps.opening = false;
+        apps.error = error;
+        true
+    }
+
+    pub(super) fn open_selected_worktree_app_chooser(&mut self) {
+        let path = match self.overlay.as_ref() {
+            Some(ClientShellOverlay::WorktreeOpen(open)) => open
+                .selected_entry_index()
+                .and_then(|index| open.entries.get(index))
+                .map(|entry| entry.path.clone()),
+            _ => None,
+        };
+        if let Some(path) = path {
+            self.open_worktree_app_chooser(path);
+        }
+    }
+
     pub(super) fn route_worktree_overlay_key(
         &mut self,
         key: &crate::input::TerminalKey,
@@ -186,6 +261,10 @@ impl ClientShellState {
                         self.overlay = None;
                         outcome.repaint = true;
                     }
+                    KeyCode::Char('a') if !opening && !search_focused && modifiers.is_empty() => {
+                        self.open_selected_worktree_app_chooser();
+                        outcome.repaint = true;
+                    }
                     KeyCode::Enter => self.submit_worktree_open(outcome),
                     KeyCode::Up if !opening => {
                         self.move_worktree_open_selection(-1);
@@ -230,6 +309,7 @@ impl ClientShellState {
                 }
                 true
             }
+            Some(ClientShellOverlay::WorktreeApps(_)) => self.route_worktree_app_key(key, outcome),
             Some(ClientShellOverlay::WorktreeRemove(_)) => {
                 let removing = matches!(
                     self.overlay,
@@ -310,7 +390,7 @@ impl ClientShellState {
             Method::WorktreeList(WorktreeListParams {
                 workspace_id: Some(workspace_id),
                 cwd: None,
-                trust_repository: false,
+                trust_repository: self.config.auto_trust_worktrees,
             }),
             kind,
             outcome,
@@ -376,7 +456,7 @@ impl ClientShellState {
                 path: None,
                 label: None,
                 focus: true,
-                trust_repository: false,
+                trust_repository: self.config.auto_trust_worktrees,
             }),
             PendingEndpointKind::WorktreeCreate,
             outcome,
@@ -431,7 +511,7 @@ impl ClientShellState {
                 branch: None,
                 label: None,
                 focus: true,
-                trust_repository: false,
+                trust_repository: self.config.auto_trust_worktrees,
             }),
             PendingEndpointKind::WorktreeOpen,
             outcome,
@@ -458,7 +538,7 @@ impl ClientShellState {
             crate::api::schema::Method::WorktreeRemove(crate::api::schema::WorktreeRemoveParams {
                 workspace_id,
                 force: forced,
-                trust_repository: false,
+                trust_repository: self.config.auto_trust_worktrees,
             }),
             PendingEndpointKind::WorktreeRemove { forced },
             outcome,
@@ -645,6 +725,9 @@ impl ClientShellState {
                 | PendingEndpointKind::ProjectList { .. }
                 | PendingEndpointKind::TaskList { .. }
                 | PendingEndpointKind::TaskOpen { .. }
+                | PendingEndpointKind::ResourceList
+                | PendingEndpointKind::ResourceAction
+                | PendingEndpointKind::TaskFileList
                 | PendingEndpointKind::TaskFileRead
                 | PendingEndpointKind::TaskFileWrite
                 | PendingEndpointKind::TmuxList

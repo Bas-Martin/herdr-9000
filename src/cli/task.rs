@@ -18,8 +18,8 @@ pub(super) fn run_task_command(args: &[String]) -> std::io::Result<i32> {
         "create" => task_create(&args[1..]),
         "open" => task_open(&args[1..]),
         "rename" => task_rename(&args[1..]),
+        "retry" => task_retry(&args[1..]),
         "close" => task_close(&args[1..]),
-        "resources" => task_resources(&args[1..]),
         "diff" => task_diff(&args[1..]),
         "read" => task_read(&args[1..]),
         "write" => task_write(&args[1..]),
@@ -207,6 +207,7 @@ fn task_create(args: &[String]) -> std::io::Result<i32> {
     };
     super::runtime::task_create(TaskCreateParams {
         project_id,
+        remote_endpoint_id: None,
         name,
         location,
         branch,
@@ -252,6 +253,16 @@ fn task_rename(args: &[String]) -> std::io::Result<i32> {
     super::runtime::task_rename(TaskRenameParams {
         task_id: args[0].clone(),
         name: args[1..].join(" "),
+    })
+}
+
+fn task_retry(args: &[String]) -> std::io::Result<i32> {
+    if args.len() != 1 {
+        eprintln!("usage: herdr task retry <task_id>");
+        return Ok(2);
+    }
+    super::runtime::task_retry(TaskTarget {
+        task_id: args[0].clone(),
     })
 }
 
@@ -617,6 +628,7 @@ fn github_create(args: &[String]) -> std::io::Result<i32> {
     super::runtime::github_issue_create(GitHubIssueTaskCreateParams {
         repository,
         number,
+        remote_endpoint_id: None,
         project_id,
         location,
         branch,
@@ -632,7 +644,7 @@ fn print_task_help() {
     println!("  list [--project ID] [--include-closed]");
     println!("  create --project ID --name NAME [OPTIONS]");
     println!("  open <task_id> [--focus|--no-focus]");
-    println!("  rename <task_id> <name>");
+    println!("  retry <task_id>");
     println!("  close <task_id>");
     println!("  resources <task_id> [--resource RESOURCE_ID ...]");
     println!("  diff <task_id> [--base REF] [--split|--unified]");

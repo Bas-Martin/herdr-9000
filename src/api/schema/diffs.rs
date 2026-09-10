@@ -59,6 +59,16 @@ pub struct TaskFileReadParams {
     pub task_id: String,
     pub path: String,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskFileListParams {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct TaskFileEntry {
+    pub path: String,
+    pub is_dir: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskFileContentInfo {

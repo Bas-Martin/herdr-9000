@@ -238,11 +238,13 @@ pub(crate) use unix_common::{begin_cli_output, end_cli_output};
 
 mod client_state;
 mod tmux;
-pub(crate) use client_state::{create_private_state_file, replace_file, sync_parent_directory};
+pub(crate) use client_state::{
+    create_private_state_dir, create_private_state_file, replace_file, sync_parent_directory,
+};
 pub(crate) use tmux::{
     capture_pane as capture_tmux_pane, focus_pane as focus_tmux_pane, kill_pane as kill_tmux_pane,
-    list_panes as list_tmux_panes, send_keys as send_tmux_keys, spawn_pane as spawn_tmux_pane,
-    PaneSnapshot as TmuxPaneSnapshot,
+    list_panes as list_tmux_panes, send_keys as send_tmux_keys, send_text as send_tmux_text,
+    spawn_pane as spawn_tmux_pane, PaneSnapshot as TmuxPaneSnapshot,
 };
 
 #[cfg(not(unix))]
@@ -250,6 +252,127 @@ pub(crate) fn begin_cli_output() {}
 
 #[cfg(not(unix))]
 pub(crate) fn end_cli_output() {}
+
+pub(crate) fn open_worktree_in_app(
+    app: &str,
+    path: &std::path::Path,
+) -> std::io::Result<Option<std::process::Child>> {
+    if path.as_os_str().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "worktree path must not be empty",
+        ));
+    }
+    let mut command = match app {
+        "VS Code" => {
+            #[cfg(windows)]
+            {
+                let mut command = std::process::Command::new("code");
+                command.arg(path);
+                command
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut command = std::process::Command::new("open");
+                command.args(["-a", "Visual Studio Code"]).arg(path);
+                command
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut command = std::process::Command::new("code");
+                command.arg(path);
+                command
+            }
+            #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "VS Code is unavailable on this platform",
+                ));
+            }
+        }
+        "File Explorer" => {
+            #[cfg(windows)]
+            {
+                let mut command = std::process::Command::new("explorer.exe");
+                command.arg(path);
+                command
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut command = std::process::Command::new("open");
+                command.arg(path);
+                command
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let mut command = std::process::Command::new("xdg-open");
+                command.arg(path);
+                command
+            }
+            #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "File Explorer is unavailable on this platform",
+                ));
+            }
+        }
+        "Terminal" => {
+            #[cfg(windows)]
+            {
+                let mut command = std::process::Command::new("wt.exe");
+                command.args(["-d"]).arg(path);
+                command
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let mut command = std::process::Command::new("open");
+                command.args(["-a", "Terminal"]).arg(path);
+                command
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let program = std::env::var_os("TERMINAL")
+                    .unwrap_or_else(|| std::ffi::OsString::from("x-terminal-emulator"));
+                let mut command = std::process::Command::new(program);
+                command.current_dir(path);
+                command
+            }
+            #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "Terminal is unavailable on this platform",
+                ));
+            }
+        }
+        "Visual Studio" => {
+            #[cfg(windows)]
+            {
+                let mut command = std::process::Command::new("devenv.exe");
+                command.arg(path);
+                command
+            }
+            #[cfg(not(windows))]
+            {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Unsupported,
+                    "Visual Studio is available only on Windows",
+                ));
+            }
+        }
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("unknown worktree application {app}"),
+            ));
+        }
+    };
+    command.spawn().map(Some).map_err(|error| {
+        std::io::Error::new(error.kind(), format!("{app} is unavailable: {error}"))
+    })
+}
 
 #[cfg(target_os = "linux")]
 mod linux;

@@ -19,6 +19,7 @@ impl App {
             project_id: resource.project_id.clone(),
             task_id: resource.task_id.clone(),
             provider: resource.provider.clone(),
+            capability_diagnostic: resource.capability_diagnostic(),
             content: resource.content.clone(),
             enabled: resource.enabled,
             created_at: resource.created_at,
@@ -38,11 +39,20 @@ impl App {
         if params.content.len() > 256 * 1024 {
             return encode_error(id, "invalid_params", "resource content is too large");
         }
-        if let Some(provider) = params.provider.as_deref() {
-            if crate::detect::parse_agent_label(provider).is_none() {
-                return encode_error(id, "invalid_params", "resource provider is unknown");
+        let provider = match params.provider {
+            Some(provider) => {
+                let provider = provider.trim();
+                if provider.is_empty() || provider.chars().any(char::is_control) {
+                    return encode_error(
+                        id,
+                        "invalid_params",
+                        "resource provider must be printable",
+                    );
+                }
+                Some(provider.to_owned())
             }
-        }
+            None => None,
+        };
         match params.scope {
             ResourceScope::Global => {
                 if params.project_id.is_some() || params.task_id.is_some() {
@@ -99,7 +109,7 @@ impl App {
             params.scope,
             params.project_id,
             params.task_id,
-            params.provider,
+            provider,
             params.content,
         );
         let previous = self.state.resources.clone();
@@ -131,6 +141,11 @@ impl App {
                 return encode_error(id, "task_not_found", "resource task does not exist");
             }
         }
+        let task_project_id = params
+            .task_id
+            .as_deref()
+            .and_then(|task_id| self.state.tasks.find(task_id))
+            .map(|task| task.project_id.as_str());
         let resources = self
             .state
             .resources
@@ -141,6 +156,8 @@ impl App {
                 params.project_id.as_deref().is_none_or(|project_id| {
                     resource.scope == ResourceScope::Global
                         || resource.project_id.as_deref() == Some(project_id)
+                        || (resource.scope == ResourceScope::Task
+                            && task_project_id == Some(project_id))
                 })
             })
             .filter(|resource| {
@@ -178,6 +195,13 @@ impl App {
                 return encode_error(id, "invalid_params", "resource content is too large");
             }
             resource.content = content;
+        }
+        if let Some(provider) = params.provider {
+            let provider = provider.trim();
+            if provider.chars().any(char::is_control) {
+                return encode_error(id, "invalid_params", "resource provider must be printable");
+            }
+            resource.provider = (!provider.is_empty()).then(|| provider.to_owned());
         }
         if let Some(enabled) = params.enabled {
             resource.enabled = enabled;

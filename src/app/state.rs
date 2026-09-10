@@ -807,7 +807,8 @@ pub struct AppState {
     /// their client-local sound config from disk.
     pub request_client_config_reload: bool,
     pub worktree_directory: std::path::PathBuf,
-    /// Latest endpoint-owned release notes, cached outside render paths.
+    pub create_worktrees_by_default: bool,
+    pub tmux_subagents: bool,
     pub latest_release_notes: Option<crate::release_notes::ReleaseNotes>,
     pub product_announcement: Option<ProductAnnouncementState>,
     // Geometry of the most recently computed server pane surface.
@@ -1040,6 +1041,8 @@ impl AppState {
             should_quit: false,
             request_client_config_reload: false,
             worktree_directory: std::path::PathBuf::from("/tmp/herdr-worktrees"),
+            create_worktrees_by_default: true,
+            tmux_subagents: true,
             latest_release_notes: None,
             product_announcement: None,
             view: ViewState {

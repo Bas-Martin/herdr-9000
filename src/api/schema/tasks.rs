@@ -8,6 +8,8 @@ use crate::task::{
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskCreateParams {
     pub project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_endpoint_id: Option<String>,
     pub name: String,
     #[serde(default)]
     pub location: TaskLocationMode,
@@ -89,6 +91,8 @@ pub struct TaskHistoryInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TaskInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_endpoint_id: Option<String>,
     pub task_id: String,
     pub project_id: String,
     pub name: String,
@@ -97,7 +101,8 @@ pub struct TaskInfo {
     pub branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub auto_provisioned_worktree: bool,
     pub provider: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -138,6 +143,8 @@ pub struct TaskInfo {
     pub tab_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tmux_pane_id: Option<String>,
     pub runtime_available: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime_message: Option<String>,

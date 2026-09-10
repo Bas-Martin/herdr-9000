@@ -42,6 +42,8 @@ impl ClientShellState {
             integration_messages: Vec::new(),
             loading_integrations: false,
             installing_integrations: false,
+            auto_trust_worktrees: self.config.auto_trust_worktrees,
+            create_worktrees_by_default: self.config.create_worktrees_by_default,
         }));
     }
 
@@ -52,6 +54,7 @@ impl ClientShellState {
             ClientSettingsSection::Sound => usize::from(!self.config.sound_enabled),
             ClientSettingsSection::Toast => toast_index(self.config.toast_delivery),
             ClientSettingsSection::Integrations => 0,
+            ClientSettingsSection::Worktrees => 0,
         }
     }
 
@@ -92,7 +95,6 @@ impl ClientShellState {
             as usize;
         self.select_settings_section(ClientSettingsSection::ALL[next], outcome);
     }
-
     fn settings_choice_count(&self) -> usize {
         match self.overlay.as_ref() {
             Some(ClientShellOverlay::Settings(settings)) => match settings.section {
@@ -100,6 +102,7 @@ impl ClientShellState {
                 ClientSettingsSection::Indicators | ClientSettingsSection::Sound => 2,
                 ClientSettingsSection::Toast => 4,
                 ClientSettingsSection::Integrations => settings.integrations.len(),
+                ClientSettingsSection::Worktrees => 2,
             },
             _ => 0,
         }
@@ -223,6 +226,31 @@ impl ClientShellState {
                 );
             }
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
+            ClientSettingsSection::Worktrees => {
+                if selected == 0 {
+                    let enabled = !self.config.auto_trust_worktrees;
+                    if self.save_settings_edit(
+                        crate::config::ConfigEdit::AutoTrustWorktreeDirs(enabled),
+                        outcome,
+                    ) {
+                        if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut()
+                        {
+                            settings.auto_trust_worktrees = enabled;
+                        }
+                    }
+                } else {
+                    let enabled = !self.config.create_worktrees_by_default;
+                    if self.save_settings_edit(
+                        crate::config::ConfigEdit::CreateWorktreeByDefault(enabled),
+                        outcome,
+                    ) {
+                        if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut()
+                        {
+                            settings.create_worktrees_by_default = enabled;
+                        }
+                    }
+                }
+            }
         }
     }
 

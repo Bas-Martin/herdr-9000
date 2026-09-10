@@ -834,6 +834,10 @@ pub struct IndexedKeysConfig {
 pub struct WorktreesConfig {
     /// Root directory under which Herdr creates <repo>/<branch-slug> checkouts.
     pub directory: String,
+    /// Trust newly opened worktree directories without prompting.
+    pub auto_trust_dirs: bool,
+    /// Create a branch/worktree when creating a task by default.
+    pub create_by_default: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
@@ -1018,6 +1022,9 @@ pub struct ExperimentalConfig {
     /// elsewhere and a best-effort no-op if the switch fails.
     /// Default: false.
     pub switch_ascii_input_source_in_prefix: bool,
+    /// Spawn task agents in dedicated tmux panes and reconnect them after restart.
+    /// Default: true.
+    pub tmux_subagents: Option<bool>,
 }
 
 impl Default for KeysConfig {
@@ -1093,6 +1100,8 @@ impl Default for WorktreesConfig {
     fn default() -> Self {
         Self {
             directory: "~/.herdr/worktrees".into(),
+            auto_trust_dirs: true,
+            create_by_default: true,
         }
     }
 }

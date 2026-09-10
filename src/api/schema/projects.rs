@@ -37,6 +37,8 @@ pub struct ProjectCreateParams {
     pub preserve_patterns: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_endpoint_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -67,6 +69,8 @@ pub struct ProjectUpdateParams {
     pub preserve_patterns: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<BTreeMap<String, String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_endpoint_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -79,6 +83,8 @@ pub struct ProjectOpenParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct ProjectInfo {
     pub project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_endpoint_id: Option<String>,
     pub name: String,
     pub root_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

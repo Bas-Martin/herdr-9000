@@ -90,21 +90,20 @@ pub(crate) fn spawn_pane(
             "tmux agent command must not be empty",
         ));
     }
-    let target = target
-        .or_else(|| std::env::var_os("TMUX_PANE").and_then(|value| value.to_str()))
-        .ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "tmux is not attached to a current pane; set TMUX_PANE or provide a target",
-            )
-        })?;
-    validate_target(target)?;
     let cwd = cwd.to_str().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "tmux pane working directory must be valid UTF-8",
         )
     })?;
+    let target = target
+        .map(str::to_owned)
+        .or_else(|| {
+            std::env::var_os("TMUX_PANE").and_then(|value| value.to_str().map(str::to_owned))
+        })
+        .map(Ok)
+        .unwrap_or_else(|| ensure_agent_session(cwd))?;
+    validate_target(&target)?;
     let mut args = vec![
         "split-window".to_owned(),
         "-d".to_owned(),
@@ -112,7 +111,7 @@ pub(crate) fn spawn_pane(
         "-F".to_owned(),
         "#{pane_id}".to_owned(),
         "-t".to_owned(),
-        target.to_owned(),
+        target.clone(),
         "-c".to_owned(),
         cwd.to_owned(),
         "-e".to_owned(),
@@ -151,6 +150,28 @@ pub(crate) fn spawn_pane(
 }
 
 #[cfg(not(windows))]
+pub(crate) fn send_text(pane_id: &str, text: &str) -> std::io::Result<()> {
+    validate_target(pane_id)?;
+    if text.is_empty()
+        || text
+            .chars()
+            .any(|character| character.is_control() && character != '\n')
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "tmux text must be non-empty and must not contain control characters",
+        ));
+    }
+    run_tmux(&["send-keys", "-l", "-t", pane_id, text])?;
+    run_tmux(&["send-keys", "-t", pane_id, "Enter"]).map(|_| ())
+}
+
+#[cfg(windows)]
+pub(crate) fn send_text(_pane_id: &str, _text: &str) -> std::io::Result<()> {
+    Err(unavailable())
+}
+
+#[cfg(not(windows))]
 pub(crate) fn send_keys(pane_id: &str, keys: &[String]) -> std::io::Result<()> {
     validate_target(pane_id)?;
     if keys.is_empty()
@@ -181,8 +202,31 @@ pub(crate) fn kill_pane(pane_id: &str) -> std::io::Result<()> {
 }
 
 #[cfg(not(windows))]
+const DEFAULT_AGENT_SESSION: &str = "herdr-agents";
+
+#[cfg(not(windows))]
+fn ensure_agent_session(cwd: &str) -> std::io::Result<String> {
+    if run_tmux(&["has-session", "-t", DEFAULT_AGENT_SESSION]).is_err() {
+        match run_tmux(&["new-session", "-d", "-s", DEFAULT_AGENT_SESSION, "-c", cwd]) {
+            Ok(_) => {}
+            Err(error) if run_tmux(&["has-session", "-t", DEFAULT_AGENT_SESSION]).is_ok() => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(format!("{DEFAULT_AGENT_SESSION}:0"))
+}
+
+#[cfg(not(windows))]
 fn run_tmux(args: &[&str]) -> std::io::Result<String> {
-    let output = std::process::Command::new("tmux").args(args).output()?;
+    let output = std::process::Command::new("tmux")
+        .args(args)
+        .output()
+        .map_err(|error| {
+            std::io::Error::new(
+                error.kind(),
+                format!("tmux is unavailable or could not be started: {error}"),
+            )
+        })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
         let message = if stderr.is_empty() {

@@ -470,6 +470,8 @@ impl App {
             should_quit: false,
             request_client_config_reload: false,
             worktree_directory,
+            tmux_subagents: config.experimental.tmux_subagents.unwrap_or(true),
+            create_worktrees_by_default: config.worktrees.create_by_default,
             latest_release_notes,
             product_announcement: startup_product_announcement.map(|announcement| {
                 state::ProductAnnouncementState {
@@ -876,6 +878,7 @@ impl App {
                 config.experimental.reveal_hidden_cursor_for_cjk_ime;
             self.state.cjk_ime_agent_filter_configured =
                 !config.experimental.cjk_ime_agents.is_empty();
+            self.state.tmux_subagents = config.experimental.tmux_subagents.unwrap_or(true);
             self.state.cjk_ime_agents = parse_cjk_ime_agents(&config.experimental.cjk_ime_agents);
             self.state.cjk_ime_cursor_shape =
                 config.experimental.cjk_ime_cursor_shape.to_decscusr();
@@ -937,6 +940,7 @@ impl App {
         if !invalid_section("worktrees") {
             self.state.worktree_directory =
                 crate::worktree::expand_tilde_absolute_path(&config.worktrees.directory);
+            self.state.create_worktrees_by_default = config.worktrees.create_by_default;
         }
 
         if !invalid_section("theme") {

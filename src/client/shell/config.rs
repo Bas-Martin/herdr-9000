@@ -44,6 +44,8 @@ impl ClientShellState {
                 .agent_panel_sort_manual
                 .then_some(self.config.agent_panel_sort),
             collapsed_groups,
+            browser_profiles: self.config.preferences.browser_profiles.clone(),
+            browser_last_profiles: self.config.preferences.browser_last_profiles.clone(),
         };
         if let Err(error) = preferences::store(path, preferences) {
             self.endpoint_error = Some(error);
@@ -140,6 +142,8 @@ impl ClientShellConfig {
             local_config_path: crate::config::config_path(),
             preferences_path: None,
             preferences: preferences::ClientChromePreferences::default(),
+            auto_trust_worktrees: config.worktrees.auto_trust_dirs,
+            create_worktrees_by_default: config.worktrees.create_by_default,
             startup_config_diagnostic: None,
             startup_onboarding: false,
         }
@@ -336,6 +340,8 @@ impl ClientShellConfig {
             self.switch_ascii_input_source_in_prefix =
                 config.experimental.switch_ascii_input_source_in_prefix;
         }
+        self.auto_trust_worktrees = config.worktrees.auto_trust_dirs;
+        self.create_worktrees_by_default = config.worktrees.create_by_default;
 
         diagnostics
     }

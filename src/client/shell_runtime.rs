@@ -20,9 +20,11 @@ pub(super) fn dispatch_client_shell_actions(
                 let background = matches!(
                     request.method,
                     crate::api::schema::Method::TaskList(_)
+                        | crate::api::schema::Method::TaskRetry(_)
                         | crate::api::schema::Method::TaskOpen(_)
-                        | crate::api::schema::Method::TaskFileRead(_)
+                        | crate::api::schema::Method::TaskFileList(_)
                         | crate::api::schema::Method::TaskFileWrite(_)
+                        | crate::api::schema::Method::ResourceList(_)
                 );
                 if let Some(connection) = endpoints.connection(&endpoint_id).filter(|_| {
                     (endpoints.active_id() == &endpoint_id && endpoints.active_surface_available())
@@ -63,6 +65,30 @@ pub(super) fn dispatch_client_shell_actions(
                         Ok(Some(child)) => detached_process_children.push(child),
                         Ok(None) => {}
                         Err(err) => warn!(err = %err, url = %url, "failed to open pane URL"),
+                    }
+                }
+            }
+            shell::ClientShellAction::OpenWorktreeApp { app, path } => {
+                let label = app.label();
+                let result =
+                    crate::platform::open_worktree_in_app(label, std::path::Path::new(&path));
+                match result {
+                    Ok(Some(child)) => {
+                        detached_process_children.push(child);
+                        if let Some(shell) = shell.as_deref_mut() {
+                            repaint |= shell.worktree_app_result(None);
+                        }
+                    }
+                    Ok(None) => {
+                        if let Some(shell) = shell.as_deref_mut() {
+                            repaint |= shell.worktree_app_result(None);
+                        }
+                    }
+                    Err(error) => {
+                        warn!(%error, app = label, path, "failed to open worktree in external app");
+                        if let Some(shell) = shell.as_deref_mut() {
+                            repaint |= shell.worktree_app_result(Some(error.to_string()));
+                        }
                     }
                 }
             }

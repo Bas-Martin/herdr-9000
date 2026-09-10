@@ -1,11 +1,14 @@
 use super::*;
 
+mod resource_editor;
+mod resource_library;
 mod settings_overlay;
 mod task_browser;
 mod task_editor;
+mod task_web_browser;
 mod tmux_panes;
+mod worktree_apps;
 mod worktree_overlays;
-
 #[derive(Default)]
 pub(crate) struct OverlayRender {
     pub(crate) primary: Rect,
@@ -31,6 +34,7 @@ pub(crate) struct OverlayRender {
     pub(crate) task_editor_content: Rect,
     pub(crate) task_editor_save: Rect,
     pub(crate) tmux_rows: Vec<(Rect, usize)>,
+    pub(crate) resource_rows: Vec<(Rect, usize)>,
     pub(crate) help_popup: Rect,
     pub(crate) help_scrollbar: Rect,
     pub(crate) help_scroll_metrics: Option<crate::pane::ScrollMetrics>,
@@ -94,12 +98,22 @@ pub(crate) fn render_client_overlay(
             worktree_overlays::render_worktree_open_overlay(b, v, p)
         }
         ClientShellOverlay::TaskBrowser(v) => task_browser::render_task_browser_overlay(b, v, p),
+        ClientShellOverlay::TaskWebBrowser(v) => {
+            task_web_browser::render_task_web_browser_overlay(b, v, p)
+        }
         ClientShellOverlay::TaskFileEditor(v) => task_editor::render_task_editor_overlay(b, v, p),
+        ClientShellOverlay::ResourceLibrary(v) => {
+            resource_library::render_resource_library_overlay(b, v, p)
+        }
         ClientShellOverlay::TmuxPanes(v) => tmux_panes::render_tmux_panes_overlay(b, v, p),
         ClientShellOverlay::WorktreeRemove(v) => {
             worktree_overlays::render_worktree_remove_overlay(b, v, p)
         }
+        ClientShellOverlay::WorktreeApps(v) => worktree_apps::render_worktree_apps_overlay(b, v, p),
         ClientShellOverlay::ContextMenu(_) | ClientShellOverlay::GlobalMenu(_) => None,
+        ClientShellOverlay::ResourceEditor(v) => {
+            resource_editor::render_resource_editor_overlay(b, v, p)
+        }
     }
 }
 
@@ -728,6 +742,7 @@ fn render_project_settings_overlay(
             Style::default().fg(p.red).bg(p.panel_bg),
         );
     } else if let Some(project) = v.project.as_ref() {
+        let endpoint = project.remote_endpoint_id.as_deref().unwrap_or("local");
         put_text(
             b,
             i.x,
@@ -741,7 +756,7 @@ fn render_project_settings_overlay(
             i.x,
             i.y.saturating_add(3),
             i.width,
-            &format!("root [local]: {}", project.root_path),
+            &format!("root [{endpoint}]: {}", project.root_path),
             Style::default().fg(p.text).bg(p.panel_bg),
         );
         put_text(
@@ -750,7 +765,7 @@ fn render_project_settings_overlay(
             i.y.saturating_add(4),
             i.width,
             &format!(
-                "worktrees [local]: {}",
+                "worktrees [{endpoint}]: {}",
                 project.worktree_root.as_deref().unwrap_or("global default")
             ),
             Style::default().fg(p.text).bg(p.panel_bg),
@@ -796,7 +811,7 @@ fn render_project_settings_overlay(
             i.x,
             i.y.saturating_add(8),
             i.width,
-            "e edit   r rename   b base   a agent   p files   o open   d delete",
+            "e edit   r rename   b base   a agent   p files   l resources   o open   d delete",
             Style::default().fg(p.overlay0).bg(p.panel_bg),
         );
     } else {

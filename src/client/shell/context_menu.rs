@@ -20,6 +20,7 @@ impl ClientContextMenuOverlay {
             } => vec![
                 item("Rename", Action::Rename),
                 item("Project settings", Action::ProjectSettings),
+                item("Open in app...", Action::OpenExternalApp),
                 item("Close", Action::Close),
                 item("New worktree", Action::NewWorktree),
                 item("Open worktree...", Action::OpenWorktree),
@@ -29,6 +30,7 @@ impl ClientContextMenuOverlay {
                 ..
             } => vec![
                 item("Rename", Action::Rename),
+                item("Open in app...", Action::OpenExternalApp),
                 item("Project settings", Action::ProjectSettings),
                 item("Close", Action::Close),
                 item("Delete worktree checkout...", Action::RemoveWorktree),
@@ -38,6 +40,7 @@ impl ClientContextMenuOverlay {
                 collapsed,
                 ..
             } => vec![
+                item("Open in app...", Action::OpenExternalApp),
                 item("Rename", Action::Rename),
                 item("Project settings", Action::ProjectSettings),
                 item("Close group", Action::Close),
@@ -234,6 +237,21 @@ impl ClientShellState {
         match action {
             ClientContextMenuAction::ProjectSettings => {
                 self.open_project_settings_overlay(workspace_id, outcome);
+            }
+            ClientContextMenuAction::OpenExternalApp => {
+                if let Some(path) = self
+                    .snapshot
+                    .as_deref()
+                    .and_then(|snapshot| {
+                        snapshot
+                            .workspaces
+                            .iter()
+                            .find(|workspace| workspace.workspace_id == workspace_id)
+                    })
+                    .map(|workspace| workspace.new_workspace_cwd.clone())
+                {
+                    self.open_worktree_app_chooser(path);
+                }
             }
             ClientContextMenuAction::Rename => {
                 let label = self
