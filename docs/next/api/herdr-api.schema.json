@@ -5246,6 +5246,17 @@
           ],
           "type": "object"
         },
+        "TaskFileListParams": {
+          "properties": {
+            "task_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_id"
+          ],
+          "type": "object"
+        },
         "TaskFileReadParams": {
           "properties": {
             "path": {
@@ -6399,6 +6410,22 @@
         {
           "properties": {
             "method": {
+              "const": "task.retry",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "task.close",
               "type": "string"
             },
@@ -6436,6 +6463,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/TaskFileReadParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "task.file_list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/TaskFileListParams"
             }
           },
           "required": [
@@ -11181,6 +11224,12 @@
             "project_id": {
               "type": "string"
             },
+            "remote_endpoint_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "root_path": {
               "type": "string"
             },
@@ -11257,6 +11306,12 @@
         },
         "ResourceInfo": {
           "properties": {
+            "capability_diagnostic": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "content": {
               "type": "string"
             },
@@ -11701,6 +11756,29 @@
               "required": [
                 "type",
                 "file"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "files": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/TaskFileEntry"
+                  },
+                  "type": "array"
+                },
+                "task_id": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "task_file_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "task_id",
+                "files"
               ],
               "type": "object"
             },
@@ -13616,6 +13694,21 @@
           ],
           "type": "object"
         },
+        "TaskFileEntry": {
+          "properties": {
+            "is_dir": {
+              "type": "boolean"
+            },
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "is_dir"
+          ],
+          "type": "object"
+        },
         "TaskFileWrittenInfo": {
           "properties": {
             "bytes": {
@@ -13722,6 +13815,10 @@
                   "type": "null"
                 }
               ]
+            },
+            "auto_provisioned_worktree": {
+              "default": false,
+              "type": "boolean"
             },
             "branch": {
               "type": [
@@ -13832,6 +13929,12 @@
                 "null"
               ]
             },
+            "remote_endpoint_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "resource_ids": {
               "items": {
                 "type": "string"
@@ -13858,6 +13961,12 @@
             },
             "task_id": {
               "type": "string"
+            },
+            "tmux_pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "updated_at": {
               "format": "uint64",

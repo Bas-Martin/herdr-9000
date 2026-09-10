@@ -60,6 +60,7 @@ pub struct ExternalIssueInfo {
 pub struct ExternalIssueTaskCreateParams {
     pub project_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
     pub remote_endpoint_id: Option<String>,
     pub issue: ExternalIssueInfo,
     #[serde(default)]

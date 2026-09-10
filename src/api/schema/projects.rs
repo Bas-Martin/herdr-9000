@@ -38,6 +38,7 @@ pub struct ProjectCreateParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
     pub remote_endpoint_id: Option<String>,
 }
 
@@ -70,6 +71,7 @@ pub struct ProjectUpdateParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
     pub remote_endpoint_id: Option<String>,
 }
 

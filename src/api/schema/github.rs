@@ -29,6 +29,7 @@ pub struct GitHubIssueTaskCreateParams {
     pub number: u64,
     pub project_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(skip)]
     pub remote_endpoint_id: Option<String>,
     #[serde(default)]
     pub location: TaskLocationMode,

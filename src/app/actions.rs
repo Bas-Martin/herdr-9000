@@ -1390,6 +1390,51 @@ fn preview_lines(body: &[u8]) -> Result<Vec<String>, String> {
 }
 
 fn strip_web_markup(body: &str) -> String {
+    fn push_line_break(text: &mut String) {
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+    }
+
+    fn is_block_tag(tag: &str) -> bool {
+        matches!(
+            tag,
+            "address"
+                | "article"
+                | "aside"
+                | "blockquote"
+                | "dd"
+                | "div"
+                | "dl"
+                | "dt"
+                | "figcaption"
+                | "figure"
+                | "footer"
+                | "form"
+                | "h1"
+                | "h2"
+                | "h3"
+                | "h4"
+                | "h5"
+                | "h6"
+                | "header"
+                | "hgroup"
+                | "hr"
+                | "li"
+                | "main"
+                | "nav"
+                | "ol"
+                | "p"
+                | "pre"
+                | "section"
+                | "table"
+                | "td"
+                | "th"
+                | "tr"
+                | "ul"
+        )
+    }
+
     let mut text = String::with_capacity(body.len());
     let mut tag = String::new();
     let mut in_tag = false;
@@ -1397,18 +1442,28 @@ fn strip_web_markup(body: &str) -> String {
     for character in body.chars() {
         if in_tag {
             if character == '>' {
+                let closing = tag.trim_start().starts_with('/');
                 let tag_name = tag
                     .trim_start_matches('/')
                     .split_whitespace()
                     .next()
                     .unwrap_or_default()
                     .to_ascii_lowercase();
-                if tag.starts_with('/') {
+                if closing {
                     if hidden_tag.as_deref() == Some(tag_name.as_str()) {
                         hidden_tag = None;
                     }
+                    if hidden_tag.is_none() && is_block_tag(&tag_name) {
+                        push_line_break(&mut text);
+                    }
                 } else if matches!(tag_name.as_str(), "script" | "style") {
                     hidden_tag = Some(tag_name);
+                } else if hidden_tag.is_none() {
+                    if tag_name == "br" {
+                        push_line_break(&mut text);
+                    } else if is_block_tag(&tag_name) {
+                        push_line_break(&mut text);
+                    }
                 }
                 tag.clear();
                 in_tag = false;
