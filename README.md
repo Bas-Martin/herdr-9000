@@ -84,6 +84,22 @@ Run `target/release/herdr` (or `target/release/herdr.exe` on Windows). The
 published npm package may lag behind unreleased commits; a source build is the
 authoritative way to run the current `main` branch.
 
+#### Updates
+
+Fork builds check the fork-owned update manifest at
+`https://raw.githubusercontent.com/Bas-Martin/herdr-9000/main/distribution/latest.json`.
+They never use the upstream `herdr.dev` manifest. Direct binaries can update with
+`herdr update`; npm installations update with:
+
+```bash
+npm install --global github:Bas-Martin/herdr-9000
+```
+
+Fork releases are published by `.github/workflows/release-fork.yml` when a
+version tag is pushed. The tag must match `Cargo.toml`; the workflow builds
+Linux, macOS, and Windows assets, creates the GitHub release, and updates
+`distribution/latest.json` with release URLs and SHA-256 checksums.
+
 #### 1. Register a project
 
 Projects are persistent registrations keyed by repository root. Register a

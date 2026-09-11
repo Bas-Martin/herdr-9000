@@ -22,10 +22,14 @@ use std::time::{Duration, Instant};
 use interprocess::local_socket::traits::Stream as _;
 use serde::{Deserialize, Deserializer};
 
-const STABLE_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/latest.json";
-const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/preview.json";
+const STABLE_UPDATE_MANIFEST_URL: &str =
+    "https://raw.githubusercontent.com/Bas-Martin/herdr-9000/main/distribution/latest.json";
+const PREVIEW_UPDATE_MANIFEST_URL: &str =
+    "https://raw.githubusercontent.com/Bas-Martin/herdr-9000/main/distribution/preview.json";
 const HOMEBREW_FORMULA_API_URL: &str = "https://formulae.brew.sh/api/formula/herdr.json";
+const FORK_RELEASE_URL_PREFIX: &str = "https://github.com/Bas-Martin/herdr-9000/releases/download/";
 const HERDR_UPDATE_COMMAND: &str = "herdr update";
+const NPM_UPDATE_COMMAND: &str = "npm install --global github:Bas-Martin/herdr-9000";
 const HOMEBREW_UPDATE_COMMAND: &str = "brew update && brew upgrade herdr";
 const MISE_UPDATE_COMMAND: &str = "mise upgrade herdr";
 const NIX_UPDATE_COMMAND: &str = "update through Nix";
@@ -404,6 +408,12 @@ fn release_info_from_manifest(manifest: &UpdateManifest) -> Result<Option<Releas
         .assets
         .get(&asset_key)
         .ok_or_else(|| format!("no binary for {asset_key} in update manifest"))?;
+
+    if !asset.url.starts_with(FORK_RELEASE_URL_PREFIX) {
+        return Err(format!(
+            "update manifest asset {asset_key} is not a Herdr 9000 release asset"
+        ));
+    }
     let download_url = asset.url.clone();
     let sha256 = asset
         .sha256
@@ -501,6 +511,12 @@ fn release_info_from_preview_manifest(
                 .and_then(|build| build.assets.get(&asset_key))
         })
         .ok_or_else(|| format!("no binary for {asset_key} in preview manifest"))?;
+
+    if !asset.url.starts_with(FORK_RELEASE_URL_PREFIX) {
+        return Err(format!(
+            "preview manifest asset {asset_key} is not a Herdr 9000 release asset"
+        ));
+    }
     let download_url = asset.url.clone();
 
     Ok(Some(ReleaseInfo {
@@ -1886,7 +1902,9 @@ fn print_running_session_update_outcomes(
 // ---------------------------------------------------------------------------
 
 pub(crate) fn update_install_command() -> &'static str {
-    if is_homebrew_managed_install() {
+    if is_npm_managed_install() {
+        NPM_UPDATE_COMMAND
+    } else if is_homebrew_managed_install() {
         HOMEBREW_UPDATE_COMMAND
     } else if is_mise_managed_install() {
         MISE_UPDATE_COMMAND
@@ -1902,6 +1920,10 @@ pub(crate) fn update_install_instruction(install_command: &str) -> String {
         HERDR_UPDATE_COMMAND => {
             "detach, run `herdr update`, then run Herdr again to reconnect".to_string()
         }
+        NPM_UPDATE_COMMAND => {
+            "detach, run `npm install --global github:Bas-Martin/herdr-9000`, then run Herdr again to reconnect"
+                .to_string()
+        }
         HOMEBREW_UPDATE_COMMAND => {
             "detach, run `brew update && brew upgrade herdr`, then run Herdr again to reconnect"
                 .to_string()
@@ -1914,6 +1936,49 @@ pub(crate) fn update_install_instruction(install_command: &str) -> String {
         }
         command => format!("detach, run `{command}`, then run Herdr again to reconnect"),
     }
+}
+fn is_npm_managed_install() -> bool {
+    let Ok(current_exe) = env::current_exe() else {
+        return false;
+    };
+
+    is_npm_managed_exe_path_following_links(&current_exe)
+}
+
+fn is_npm_managed_exe_path_following_links(path: &Path) -> bool {
+    is_npm_managed_exe_path(path)
+        || path
+            .canonicalize()
+            .is_ok_and(|path| is_npm_managed_exe_path(&path))
+}
+
+fn is_npm_managed_exe_path(path: &Path) -> bool {
+    let Some(runtime_dir) = path.parent() else {
+        return false;
+    };
+    if runtime_dir.file_name() != Some(std::ffi::OsStr::new("runtime")) {
+        return false;
+    }
+    let Some(npm_bin_dir) = runtime_dir.parent() else {
+        return false;
+    };
+    if npm_bin_dir.file_name() != Some(std::ffi::OsStr::new("bin")) {
+        return false;
+    }
+    let Some(npm_dir) = npm_bin_dir.parent() else {
+        return false;
+    };
+    if npm_dir.file_name() != Some(std::ffi::OsStr::new("npm")) {
+        return false;
+    }
+    let Some(packaging_dir) = npm_dir.parent() else {
+        return false;
+    };
+    if packaging_dir.file_name() != Some(std::ffi::OsStr::new("packaging")) {
+        return false;
+    }
+    path.file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("herdr.exe"))
 }
 
 fn is_homebrew_managed_install() -> bool {
@@ -1950,7 +2015,9 @@ pub(crate) fn preview_channel_rejection_for_current_install() -> Option<&'static
 
 pub(crate) fn package_manager_channel_update_guidance_for_current_install() -> Option<&'static str>
 {
-    if is_homebrew_managed_install() {
+    if is_npm_managed_install() {
+        Some("Use `npm install --global github:Bas-Martin/herdr-9000` to update npm installs.")
+    } else if is_homebrew_managed_install() {
         Some("Use `brew update && brew upgrade herdr` to update Homebrew installs.")
     } else if is_mise_managed_install() {
         Some("Use `mise upgrade herdr` to update mise installs.")
@@ -1960,9 +2027,12 @@ pub(crate) fn package_manager_channel_update_guidance_for_current_install() -> O
         None
     }
 }
-
 fn preview_channel_rejection_for_exe_path(path: &Path) -> Option<&'static str> {
-    if is_homebrew_managed_exe_path_following_links(path) {
+    if is_npm_managed_exe_path_following_links(path) {
+        Some(
+            "preview channel is only available for direct Herdr installs; npm installs update through `npm install --global github:Bas-Martin/herdr-9000`",
+        )
+    } else if is_homebrew_managed_exe_path_following_links(path) {
         Some(
             "preview channel is only available for direct Herdr installs; Homebrew installs update through `brew update && brew upgrade herdr`",
         )
@@ -1976,17 +2046,17 @@ fn preview_channel_rejection_for_exe_path(path: &Path) -> Option<&'static str> {
         None
     }
 }
-
 #[cfg(unix)]
 pub(crate) fn is_package_manager_managed_exe_path(path: &Path) -> bool {
-    is_homebrew_managed_exe_path_following_links(path)
+    is_npm_managed_exe_path_following_links(path)
+        || is_homebrew_managed_exe_path_following_links(path)
         || is_mise_managed_exe_path_following_links(path)
         || is_nix_store_exe_path_following_links(path)
 }
 
 #[cfg(not(unix))]
-pub(crate) fn is_package_manager_managed_exe_path(_path: &Path) -> bool {
-    false
+pub(crate) fn is_package_manager_managed_exe_path(path: &Path) -> bool {
+    is_npm_managed_exe_path_following_links(path)
 }
 
 fn is_homebrew_managed_exe_path_following_links(path: &Path) -> bool {
@@ -2112,6 +2182,12 @@ fn homebrew_cellar_keg_root(path: &Path) -> Option<PathBuf> {
 /// Manual self-update command (`herdr update`).
 pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     let channel = UpdateChannel::configured();
+
+    if is_npm_managed_install() {
+        return Err(format!(
+            "self-update is disabled for npm installs; run `{NPM_UPDATE_COMMAND}`"
+        ));
+    }
 
     if is_homebrew_managed_install() {
         if channel == UpdateChannel::Preview {
@@ -2615,6 +2691,24 @@ mod tests {
     }
 
     #[test]
+    fn npm_package_runtime_path_is_detected() {
+        let path =
+            Path::new("/home/user/node_modules/herdr-9000/packaging/npm/bin/runtime/herdr.exe");
+
+        assert!(is_npm_managed_exe_path(path));
+        assert!(is_package_manager_managed_exe_path(path));
+        assert!(preview_channel_rejection_for_exe_path(path)
+            .is_some_and(|message| message.contains("npm")));
+    }
+
+    #[test]
+    fn non_npm_runtime_path_is_not_detected() {
+        let path = Path::new("/home/user/.local/bin/runtime/herdr.exe");
+
+        assert!(!is_npm_managed_exe_path(path));
+    }
+
+    #[test]
     fn package_manager_path_detection_follows_homebrew_symlink() {
         #[cfg(unix)]
         {
@@ -2765,6 +2859,10 @@ mod tests {
         assert_eq!(
             update_install_instruction(MISE_UPDATE_COMMAND),
             "detach, run `mise upgrade herdr`, then run Herdr again to reconnect"
+        );
+        assert_eq!(
+            update_install_instruction(NPM_UPDATE_COMMAND),
+            "detach, run `npm install --global github:Bas-Martin/herdr-9000`, then run Herdr again to reconnect"
         );
     }
 
@@ -3575,7 +3673,7 @@ mod tests {
                 "version": "99.99.99",
                 "notes": "### Changed\n- One",
                 "assets": {{
-                    "{asset_key}": "https://example.com/herdr"
+                    "{asset_key}": "https://github.com/Bas-Martin/herdr-9000/releases/download/v99.99.99/herdr"
                 }}
             }}"####
         );
@@ -3602,7 +3700,7 @@ mod tests {
                 }},
                 "assets": {{
                     "{asset_key}": {{
-                        "url": "https://example.com/herdr",
+                        "url": "https://github.com/Bas-Martin/herdr-9000/releases/download/v99.99.99/herdr",
                         "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                     }}
                 }}
@@ -3616,7 +3714,33 @@ mod tests {
             .expect("release info");
 
         assert_eq!(release.version, Version::parse("99.99.99").unwrap());
-        assert_eq!(release.download_url, "https://example.com/herdr");
+        assert_eq!(
+            release.download_url,
+            "https://github.com/Bas-Martin/herdr-9000/releases/download/v99.99.99/herdr"
+        );
+    }
+
+    #[test]
+    fn stable_update_rejects_upstream_asset_url() {
+        let (os, arch) = platform_target();
+        let asset_key = format!("{os}-{arch}");
+        let json = format!(
+            r####"{{
+                "version": "99.99.99",
+                "notes": "### Changed\n- One",
+                "assets": {{
+                    "{asset_key}": {{
+                        "url": "https://github.com/herdrdev/herdr/releases/download/v99.99.99/herdr",
+                        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    }}
+                }}
+            }}"####
+        );
+        let manifest: UpdateManifest = serde_json::from_str(&json).unwrap();
+
+        assert!(release_info_from_manifest(&manifest)
+            .unwrap_err()
+            .contains("not a Herdr 9000 release asset"));
     }
 
     #[test]
@@ -3650,7 +3774,7 @@ mod tests {
                 "notes": "### Fixed\n- One",
                 "assets": {{
                     "{asset_key}": {{
-                        "url": "https://example.com/herdr-linux-x86_64",
+                        "url": "https://github.com/Bas-Martin/herdr-9000/releases/download/preview-2026-06-02-abcdef123456/herdr",
                         "sha256": "deadbeef"
                     }}
                 }},
@@ -3662,7 +3786,7 @@ mod tests {
                         "protocol": 77,
                         "assets": {{
                             "{asset_key}": {{
-                                "url": "https://example.com/herdr-linux_x86_64",
+                                "url": "https://github.com/Bas-Martin/herdr-9000/releases/download/preview-2026-06-02-abcdef123456/herdr",
                                 "sha256": "deadbeef"
                             }}
                         }}
@@ -3680,6 +3804,34 @@ mod tests {
         assert_eq!(release.identity, "9.9.9-preview.2026-06-02-abcdef123456");
         assert_eq!(release.target_protocol, Some(77));
         assert_eq!(release.sha256.as_deref(), Some("deadbeef"));
+    }
+
+    #[test]
+    fn preview_update_rejects_upstream_asset_url() {
+        let (os, arch) = platform_target();
+        let asset_key = format!("{os}-{arch}");
+        let json = format!(
+            r####"{{
+                "channel": "preview",
+                "base_version": "9.9.9",
+                "build_id": "2026-06-02-abcdef123456",
+                "commit": "abcdef1234567890",
+                "built_at": "2026-06-02T03:00:00Z",
+                "protocol": 77,
+                "notes": "### Fixed\n- One",
+                "assets": {{
+                    "{asset_key}": {{
+                        "url": "https://github.com/herdrdev/herdr/releases/download/preview-2026-06-02-abcdef123456/herdr",
+                        "sha256": "deadbeef"
+                    }}
+                }}
+            }}"####
+        );
+        let manifest: PreviewManifest = serde_json::from_str(&json).unwrap();
+
+        assert!(release_info_from_preview_manifest(&manifest)
+            .unwrap_err()
+            .contains("not a Herdr 9000 release asset"));
     }
 
     #[test]
