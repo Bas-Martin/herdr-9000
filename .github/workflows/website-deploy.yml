@@ -3,7 +3,7 @@ name: Trigger Website Deploy
 on:
   workflow_dispatch:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - ".github/workflows/website-deploy.yml"
       - "docs/preview/**"

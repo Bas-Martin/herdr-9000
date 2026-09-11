@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master, windows]
+    branches: [main, windows]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   conventional-commits:
-    if: github.event_name != 'push' || github.ref_name == 'master'
+    if: github.event_name != 'push' || github.ref_name == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
