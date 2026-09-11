@@ -267,9 +267,7 @@ pub(crate) fn open_worktree_in_app(
         "VS Code" => {
             #[cfg(windows)]
             {
-                let mut command = std::process::Command::new("code");
-                command.arg(path);
-                command
+                windows::vscode_command(path)?
             }
             #[cfg(target_os = "macos")]
             {

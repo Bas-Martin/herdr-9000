@@ -892,6 +892,125 @@ fn pane_custom_command_pty_builder_with_comspec(
     builder
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum VsCodeLauncher {
+    Executable(PathBuf),
+    CommandScript(PathBuf),
+}
+
+pub(crate) fn vscode_command(path: &std::path::Path) -> std::io::Result<std::process::Command> {
+    let path_dirs = std::env::var_os("PATH")
+        .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let install_roots = vscode_install_roots();
+    let Some(launcher) = find_vscode_launcher(&path_dirs, &install_roots) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Visual Studio Code was not found; install VS Code or add code.exe or code.cmd to PATH",
+        ));
+    };
+
+    let mut command = match launcher {
+        VsCodeLauncher::Executable(executable) => std::process::Command::new(executable),
+        VsCodeLauncher::CommandScript(script) => {
+            let comspec =
+                std::env::var_os("ComSpec").unwrap_or_else(|| std::ffi::OsString::from("cmd.exe"));
+            let mut command = std::process::Command::new(comspec);
+            command.args(["/d", "/c"]).arg(script);
+            command
+        }
+    };
+    command.arg(path);
+    Ok(command)
+}
+
+fn vscode_install_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let programs = PathBuf::from(local_app_data).join("Programs");
+        roots.push(programs.join("Microsoft VS Code"));
+        roots.push(programs.join("Microsoft VS Code Insiders"));
+    }
+    for variable in ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"] {
+        if let Some(program_files) = std::env::var_os(variable) {
+            let base = PathBuf::from(program_files);
+            for product in ["Microsoft VS Code", "Microsoft VS Code Insiders"] {
+                let root = base.join(product);
+                if !roots.contains(&root) {
+                    roots.push(root);
+                }
+            }
+        }
+    }
+    roots
+}
+
+fn find_vscode_launcher(
+    path_dirs: &[PathBuf],
+    install_roots: &[PathBuf],
+) -> Option<VsCodeLauncher> {
+    for directory in path_dirs {
+        for name in [
+            "code.exe",
+            "code.cmd",
+            "code-insiders.exe",
+            "code-insiders.cmd",
+        ] {
+            if let Some(launcher) = vscode_launcher_from_candidate(directory.join(name)) {
+                return Some(launcher);
+            }
+        }
+    }
+    for root in install_roots {
+        for name in ["Code.exe", "Code - Insiders.exe"] {
+            if let Some(launcher) = vscode_launcher_from_candidate(root.join(name)) {
+                return Some(launcher);
+            }
+        }
+        for name in ["code.cmd", "code-insiders.cmd"] {
+            if let Some(launcher) = vscode_launcher_from_candidate(root.join("bin").join(name)) {
+                return Some(launcher);
+            }
+        }
+    }
+    None
+}
+
+fn vscode_launcher_from_candidate(candidate: PathBuf) -> Option<VsCodeLauncher> {
+    if !candidate.is_file() {
+        return None;
+    }
+    let name = candidate
+        .file_name()?
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    match name.as_str() {
+        "code.exe" | "code - insiders.exe" => Some(VsCodeLauncher::Executable(candidate)),
+        "code.cmd" | "code-insiders.cmd" => {
+            let executable_name = if name == "code.cmd" {
+                "Code.exe"
+            } else {
+                "Code - Insiders.exe"
+            };
+            let executable = candidate.parent()?.parent()?.join(executable_name);
+            if executable.is_file() {
+                Some(VsCodeLauncher::Executable(executable))
+            } else {
+                Some(VsCodeLauncher::CommandScript(candidate))
+            }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+fn vscode_test_root(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "herdr-vscode-{label}-{}",
+        next_pane_runtime_marker()
+    ))
+}
+
 pub(crate) fn scrollback_editor_argv(path: &std::path::Path) -> std::io::Result<Vec<String>> {
     let editor = std::env::var("VISUAL")
         .ok()
@@ -3995,6 +4114,65 @@ mod tests {
             argv,
             vec!["notepad.exe".to_string(), path.display().to_string()]
         );
+    }
+
+    #[test]
+    fn vscode_launcher_prefers_code_exe_on_path() {
+        let root = super::vscode_test_root("path-exe");
+        fs::create_dir_all(&root).expect("create VS Code path fixture");
+        let executable = root.join("code.exe");
+        fs::write(&executable, b"fixture").expect("write VS Code executable fixture");
+
+        let launcher = super::find_vscode_launcher(std::slice::from_ref(&root), &[])
+            .expect("find VS Code executable");
+        assert_eq!(launcher, super::VsCodeLauncher::Executable(executable));
+
+        fs::remove_dir_all(root).expect("remove VS Code path fixture");
+    }
+
+    #[test]
+    fn vscode_launcher_resolves_code_cmd_to_installed_executable() {
+        let root = super::vscode_test_root("path-cmd");
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).expect("create VS Code bin fixture");
+        let executable = root.join("Code.exe");
+        let script = bin.join("code.cmd");
+        fs::write(&executable, b"fixture").expect("write VS Code executable fixture");
+        fs::write(&script, b"fixture").expect("write VS Code command fixture");
+
+        let launcher = super::find_vscode_launcher(std::slice::from_ref(&bin), &[])
+            .expect("find VS Code command");
+        assert_eq!(launcher, super::VsCodeLauncher::Executable(executable));
+
+        fs::remove_dir_all(root).expect("remove VS Code command fixture");
+    }
+
+    #[test]
+    fn vscode_launcher_keeps_custom_code_cmd_when_install_executable_is_missing() {
+        let root = super::vscode_test_root("custom-cmd");
+        fs::create_dir_all(&root).expect("create custom VS Code fixture");
+        let script = root.join("code.cmd");
+        fs::write(&script, b"fixture").expect("write custom VS Code command fixture");
+
+        let launcher = super::find_vscode_launcher(std::slice::from_ref(&root), &[])
+            .expect("find custom VS Code command");
+        assert_eq!(launcher, super::VsCodeLauncher::CommandScript(script));
+
+        fs::remove_dir_all(root).expect("remove custom VS Code fixture");
+    }
+
+    #[test]
+    fn vscode_launcher_finds_standard_install_root_without_path_entry() {
+        let root = super::vscode_test_root("install-root");
+        fs::create_dir_all(&root).expect("create VS Code install fixture");
+        let executable = root.join("Code.exe");
+        fs::write(&executable, b"fixture").expect("write VS Code install executable fixture");
+
+        let launcher = super::find_vscode_launcher(&[], std::slice::from_ref(&root))
+            .expect("find VS Code install");
+        assert_eq!(launcher, super::VsCodeLauncher::Executable(executable));
+
+        fs::remove_dir_all(root).expect("remove VS Code install fixture");
     }
 
     fn test_entry(

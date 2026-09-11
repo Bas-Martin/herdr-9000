@@ -107,6 +107,11 @@ Windows terminals do not all report modified keys in the same shape. Herdr prese
 
 Windows packages include Microsoft's current app-local ConPTY runtime because the system ConPTY on older Windows 10 builds drops Kitty keyboard protocol sequences used by agents such as Kimi and Pi. Set `HERDR_WINDOWS_CONPTY=system` before starting Herdr only when diagnosing a compatibility problem with the bundled runtime.
 
+### Opening worktrees in VS Code
+
+The `Open in app...` action finds Visual Studio Code through the Windows `PATH` and standard per-user or system installation directories. It supports both the `code.exe`/`Code.exe` executable and the `code.cmd` launcher, including VS Code Insiders. A custom installation works when its `code.cmd` or `code.exe` is on `PATH`. If VS Code is not installed, Herdr reports that it could not find the launcher instead of silently opening the wrong application.
+
+
 ## Copy and paste
 
 Herdr's pane text copy works on Windows. Drag-select text inside a pane to copy through Herdr.
