@@ -1530,7 +1530,9 @@ mod tests {
                 .map(str::to_string)
         );
         assert!(has_option(agent_start, "pane"));
-        for legacy in ["cwd", "workspace", "tab", "split", "focus", "env", "argv"] {
+        assert!(has_option(agent_start, "target"));
+        assert!(has_option(agent_start, "cwd"));
+        for legacy in ["workspace", "tab", "split", "focus", "env", "argv"] {
             assert!(!has_option(agent_start, legacy), "legacy option --{legacy}");
         }
         assert!(agent_start
@@ -1572,7 +1574,8 @@ mod tests {
     fn next_step_hints_render_without_replacing_existing_after_help() {
         let agent_start = long_help(&["agent", "start"]);
         assert!(
-            agent_start.contains("The pane must be at its interactive shell prompt."),
+            agent_start
+                .contains("The pane must be at its interactive shell prompt for the normal mode.",),
             "agent start dropped its existing after_help: {agent_start}"
         );
         assert!(

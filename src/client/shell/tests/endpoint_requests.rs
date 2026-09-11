@@ -44,6 +44,7 @@ fn pending_worktree() -> (ClientShellState, Vec<ClientShellAction>) {
     };
     state.handle_endpoint_result("boot-1", &request.id, Ok(worktree_list_result(None)));
     state.handle_input_bytes(b"feature/reconnect");
+    state.handle_input_bytes(b"\r");
     let outcome = state.handle_input_bytes(b"\r");
     assert!(matches!(
         &state.overlay,

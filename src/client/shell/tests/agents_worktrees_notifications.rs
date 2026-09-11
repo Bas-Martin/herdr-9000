@@ -948,15 +948,19 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
     assert!(text.contains("create and open"));
     assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
 
-    assert!(state
-        .handle_input_bytes(b"feature/client-shell")
-        .actions
-        .is_empty());
+    assert!(state.handle_input_bytes(b"client shell").actions.is_empty());
     assert!(matches!(
         &state.overlay,
         Some(ClientShellOverlay::WorktreeCreate(create))
-            if create.checkout_path
-                == "/tmp/herdr-worktrees/repo/feature-client-shell"
+            if create.checkout_path == "/tmp/herdr-worktrees/repo/feat-client-shell"
+                && create.branch == "feat/client-shell"
+    ));
+    let advance = state.handle_input_bytes(b"\r");
+    assert!(advance.actions.is_empty());
+    assert!(matches!(
+        &state.overlay,
+        Some(ClientShellOverlay::WorktreeCreate(create))
+            if create.field == ClientWorktreeCreateField::Branch
     ));
     let submit = state.handle_input_bytes(b"\r");
     let [ClientShellAction::Endpoint { request, .. }] = &submit.actions[..] else {
@@ -966,7 +970,7 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
         &request.method,
         crate::api::schema::Method::WorktreeCreate(params)
             if params.workspace_id.as_deref() == Some("ws_1")
-                && params.branch.as_deref() == Some("feature/client-shell")
+                && params.branch.as_deref() == Some("feat/client-shell")
                 && params.path.is_none()
                 && params.focus
     ));
@@ -989,6 +993,8 @@ fn unavailable_worktree_create_does_not_wedge_the_overlay() {
     state.set_endpoint_methods(Some(vec!["worktree.list".into()]));
     state.handle_input_bytes(b"feature/unavailable");
 
+    let advance = state.handle_input_bytes(b"\r");
+    assert!(advance.actions.is_empty());
     let submit = state.handle_input_bytes(b"\r");
 
     assert!(submit.actions.is_empty());

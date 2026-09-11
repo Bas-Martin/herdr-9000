@@ -48,31 +48,306 @@ or `brew install herdr` · `mise use -g herdr` · windows: `powershell -Executio
 
 ### Herdr 9000 fork
 
-Install the fork directly from GitHub with npx:
+Herdr 9000 keeps the upstream persistent terminal runtime and adds a
+project-aware agent workflow:
+
+- persistent project registrations;
+- Git worktree-backed workspaces grouped with their parent repository;
+- durable tasks with repository or worktree locations;
+- reusable prompt, skill, and MCP resources;
+- recurring project automations;
+- tmux-native subagent panes;
+- GitHub issue-to-task and task-to-PR workflows;
+- a versioned socket API schema for clients and integrations.
+
+The examples below use `herdr9000`. The installed binary also accepts the
+normal `herdr` command name.
+
+#### Install
+
+Install the published fork package:
 
 ```bash
-npx -y github:Bas-Martin/herdr-9000
-```
-
-The executable provided by the fork is `herdr9000`:
-
-```bash
+npm install --global github:Bas-Martin/herdr-9000
 herdr9000
 ```
 
-To test the current issue-1 branch before it is merged into `custom`:
+For the exact current branch, build from source:
 
 ```bash
-npx -y github:Bas-Martin/herdr-9000#issue/1-project-workspace-registry
+git clone https://github.com/Bas-Martin/herdr-9000
+cd herdr-9000
+cargo build --release
 ```
 
-then start it where the work lives:
+Run `target/release/herdr` (or `target/release/herdr.exe` on Windows). The
+published npm package may lag behind unreleased commits; a source build is the
+authoritative way to run the current `main` branch.
+
+#### 1. Register a project
+
+Projects are persistent registrations keyed by repository root. Register a
+repository once before using task-linked worktrees:
 
 ```bash
-herdr
+herdr9000 project create --name herdr9000 --path /path/to/herdr-9000 --open
+herdr9000 project list
+herdr9000 project get <project_id>
+herdr9000 project open <project_id>
+herdr9000 project rename <project_id> "Herdr 9000"
+herdr9000 project delete <project_id>
 ```
 
-run your agents, split panes, walk away. `ctrl+b q` detaches, `herdr` reattaches. [quick start →](https://herdr.dev/docs/quick-start/)
+`project create` returns the generated project ID in its JSON response. Use
+that ID for task, resource, and automation commands. Creating the same root
+again reports the existing registration instead of creating a duplicate.
+
+In the TUI, open the repository workspace context menu and choose **Project
+settings**. Project settings can define:
+
+- a project-specific worktree root and base branch;
+- the default agent provider;
+- repository-relative preserve patterns for ignored files;
+- project environment variables and lifecycle commands through the socket API.
+
+The lifecycle fields are `prepare`, `setup`, `run`, and `teardown`. The first
+three run in order for worktree tasks; `teardown` runs when the task finishes.
+Use `herdr9000 api schema --json` for the complete `project.create` and
+`project.update` payloads.
+
+#### 2. Create and manage worktrees
+
+Worktrees are regular Herdr workspaces with Git checkout provenance:
+
+```bash
+herdr9000 worktree list --cwd /path/to/herdr-9000
+herdr9000 worktree create \
+  --cwd /path/to/herdr-9000 \
+  --branch feature/example \
+  --base main \
+  --focus
+herdr9000 worktree open --path /path/to/worktree --focus
+herdr9000 worktree remove --workspace <workspace_id>
+```
+
+If `--branch` does not exist, Herdr creates it from `--base` or `HEAD`.
+Without `--path`, Herdr uses the configured worktree directory and creates a
+path shaped like `<repo>/<branch-slug>`. `worktree remove` removes the checkout
+with `git worktree remove`; it never deletes the Git branch. Add `--force` for
+a dirty checkout when Git requires it.
+
+For the client-shell flow, register the repository as a project first. Then
+choose **New worktree** from the project workspace context menu. Enter a task
+name, review the generated `feat/<slug>` branch and checkout path, and submit.
+The new worktree is grouped with the parent workspace. **Open worktree...**
+opens an existing checkout in the same group, while **Delete worktree
+checkout...** removes a linked checkout.
+
+Git ownership checks are enabled by default. Use `--trust-repository` for a
+single verified command, or configure the worktree defaults in the TUI:
+
+```toml
+[worktrees]
+directory = "~/.herdr/worktrees"
+auto_trust_dirs = true
+create_by_default = true
+```
+
+`create_by_default = true` makes a task without an explicit worktree path use
+a new branch and worktree. Disable it when repository tasks should stay in the
+main checkout.
+
+#### 3. Create durable tasks
+
+Tasks persist independently from the terminal pane and keep their project,
+location, branch, workspace, agent, prompt, resources, and status:
+
+```bash
+herdr9000 task create \
+  --project <project_id> \
+  --name "Review authentication flow" \
+  --location worktree \
+  --provider codex \
+  --model gpt-5 \
+  --prompt "Inspect the auth flow and propose a safe fix."
+herdr9000 task list --project <project_id>
+herdr9000 task open <task_id>
+herdr9000 task retry <task_id>
+herdr9000 task close <task_id>
+```
+
+Use `--location repository` to keep the task in the project repository.
+`--location worktree` provisions a checkout when `--worktree-path` is absent;
+`--branch` can select the branch name. Project environment variables are
+inherited and task `--env NAME=VALUE` values override them. `--workspace-id`,
+`--tab-id`, and `--pane-id` attach a task to an existing runtime target.
+
+Inspect and publish task changes without leaving the task workflow:
+
+```bash
+herdr9000 task diff <task_id> --unified
+herdr9000 task read <task_id> --path src/main.rs
+herdr9000 task write <task_id> --path notes/review.md --content "..."
+herdr9000 task git <task_id> stage --path src/main.rs
+herdr9000 task git <task_id> commit --message "fix: handle auth edge case"
+herdr9000 task git <task_id> push
+herdr9000 task git <task_id> pr \
+  --title "fix: handle auth edge case" \
+  --body "Describes the change" \
+  --base main
+```
+
+The task browser is available from the TUI global menu. Selecting a task
+opens its workspace, restores its runtime target when possible, and exposes
+its status and location. A task with a configured provider can launch that
+agent automatically; a task without one remains review-ready for manual work.
+
+#### 4. Reuse prompts, skills, and MCP resources
+
+Resources are persisted and scoped as `global`, `project`, or `task`:
+
+```bash
+herdr9000 resource create \
+  --kind prompt \
+  --name review-checklist \
+  --scope project \
+  --project <project_id> \
+  --content "Check validation, error handling, and regression coverage."
+herdr9000 resource list --project <project_id>
+herdr9000 task resources <task_id> --resource <resource_id>
+herdr9000 resource update <resource_id> --disable
+herdr9000 resource delete <resource_id>
+```
+
+Use `--kind skill` for reusable instructions and `--kind mcp` for MCP
+configuration JSON. A resource can be restricted to a provider with
+`--provider`. Scope and provider checks happen before task execution; disabled,
+foreign, malformed, or unsupported resources are rejected. Prompt and skill
+content is injected into the task prompt. MCP resources currently require the
+Claude provider.
+
+The TUI global menu contains **resources** and lets you create, edit, enable,
+disable, assign, and inspect resources without manually copying configuration
+between tasks.
+
+#### 5. Schedule recurring automations
+
+An automation creates a new task for its project on a cron schedule:
+
+```bash
+herdr9000 automation create \
+  --name weekday-review \
+  --project <project_id> \
+  --cron "0 9 * * 1-5" \
+  --prompt "Review the latest changes and report regressions." \
+  --provider codex \
+  --workspace-mode worktree
+herdr9000 automation list --project <project_id>
+herdr9000 automation run-now <automation_id>
+herdr9000 automation update <automation_id> --pause
+herdr9000 automation update <automation_id> --resume
+herdr9000 automation delete <automation_id>
+```
+
+Use `--workspace-mode repository` to run in the project checkout or
+`worktree` to provision an isolated checkout for each run. `--disable` keeps
+an automation configured but inactive; `--include-disabled` includes it in
+list output.
+
+#### 6. Work with GitHub issues
+
+Search issues and create a durable Herdr task from one:
+
+```bash
+herdr9000 task github-search \
+  --repo OWNER/REPOSITORY \
+  --query "authentication" \
+  --limit 20
+herdr9000 task github-create \
+  --repo OWNER/REPOSITORY \
+  --number 123 \
+  --project <project_id> \
+  --location worktree \
+  --branch issue/123-authentication
+```
+
+The created task retains the issue context and can use the normal task
+diff/read/write/Git workflow. GitHub credentials and repository permissions
+are supplied by the local GitHub tooling.
+
+#### 7. Start agents in tmux panes
+
+Start an agent in an existing Herdr shell pane:
+
+```bash
+herdr9000 agent start reviewer --kind codex --pane <pane_id>
+```
+
+Or let Herdr create a tmux pane:
+
+```bash
+herdr9000 agent start reviewer \
+  --kind codex \
+  --tmux \
+  --target <source_pane_id> \
+  --cwd /path/to/herdr-9000
+```
+
+Arguments after `--` are passed to the agent executable:
+
+```bash
+herdr9000 agent start reviewer --kind claude --tmux -- --model sonnet
+```
+
+Manage Herdr-owned tmux panes:
+
+```bash
+herdr9000 tmux list
+herdr9000 tmux capture <pane_id> --lines 80
+herdr9000 tmux send-keys <pane_id> enter
+herdr9000 tmux focus <pane_id>
+herdr9000 tmux kill <pane_id>
+```
+
+The tmux pane is tracked as a Herdr subagent, including provider, parent pane,
+status, current path, and recent output. The TUI global menu exposes the same
+pane list. `agent start --pane` requires an interactive shell prompt;
+`agent start --tmux` creates the topology and starts the canonical provider
+executable.
+
+#### 8. Use the socket API
+
+The CLI and TUI use the same local socket API. Inspect the schema bundled with
+the installed binary:
+
+```bash
+herdr9000 api schema
+herdr9000 api schema --json
+herdr9000 api schema --output herdr-api.schema.json
+herdr9000 api snapshot
+```
+
+New clients should advertise and probe optional methods such as
+`project.*`, `worktree.*`, `task.*`, `automation.*`, `resource.*`, and
+`tmux.*`. Missing optional methods, older servers, and unavailable endpoints
+remain client-local failures; they must not disconnect compatible sessions.
+
+The upstream Herdr documentation remains the reference for sessions,
+workspaces, tabs, panes, integrations, plugins, remote attach, and keyboard
+controls: [quick start](https://herdr.dev/docs/quick-start/) ·
+[CLI reference](https://herdr.dev/docs/cli-reference/) ·
+[socket API](https://herdr.dev/docs/socket-api/).
+
+To test the current source branch before installing a published package:
+
+```bash
+git clone https://github.com/Bas-Martin/herdr-9000
+cd herdr-9000
+cargo build --release
+```
+
+Then start the built binary in the repository checkout. It uses the current
+project registry, task, worktree, resource, automation, and tmux features.
 
 ## docs
 
