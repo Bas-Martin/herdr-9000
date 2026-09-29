@@ -66,6 +66,18 @@ pub(super) fn snapshot() -> ClientShellSnapshot {
 }
 
 fn worktree_list_result(open_workspace_id: Option<&str>) -> crate::api::schema::ResponseResult {
+    worktree_list_result_with_project_root(
+        open_workspace_id,
+        Some("p1"),
+        Some("/tmp/project-worktrees"),
+    )
+}
+
+fn worktree_list_result_with_project_root(
+    open_workspace_id: Option<&str>,
+    project_id: Option<&str>,
+    worktree_root: Option<&str>,
+) -> crate::api::schema::ResponseResult {
     crate::api::schema::ResponseResult::WorktreeList {
         source: crate::api::schema::WorktreeSourceInfo {
             repo_key: "repo-key".into(),
@@ -73,8 +85,8 @@ fn worktree_list_result(open_workspace_id: Option<&str>) -> crate::api::schema::
             repo_root: "/repo".into(),
             source_checkout_path: "/repo".into(),
             source_workspace_id: Some("ws_1".into()),
-            project_id: None,
-            worktree_root: None,
+            project_id: project_id.map(str::to_owned),
+            worktree_root: worktree_root.map(str::to_owned),
         },
         worktrees: vec![crate::api::schema::WorktreeInfo {
             path: "/repo-feature".into(),

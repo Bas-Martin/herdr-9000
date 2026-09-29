@@ -812,6 +812,12 @@ pub(super) enum PendingEndpointKind {
     PrepareWorktreeCreate {
         workspace_id: String,
     },
+    ResolveWorktreeCreatePath {
+        workspace_id: String,
+        project_id: String,
+        repo_name: String,
+        fallback_worktree_directory: Option<String>,
+    },
     PrepareWorktreeOpen {
         workspace_id: String,
     },

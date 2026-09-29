@@ -1024,10 +1024,14 @@ impl ClientShellState {
                 return self.handle_settings_endpoint_result(kind, result);
             }
             kind => {
-                return (
-                    self.handle_worktree_endpoint_result(kind, result),
-                    Vec::new(),
+                let mut follow_up = ClientShellInput::default();
+                let repaint = self.handle_worktree_endpoint_result(
+                    kind,
+                    result,
+                    pending.endpoint_id.clone(),
+                    &mut follow_up,
                 );
+                return (repaint || follow_up.repaint, follow_up.actions);
             }
         }
         let repaint = match result {
