@@ -910,7 +910,7 @@ fn navigate_mode_selects_workspace_locally_then_focuses_by_stable_id() {
 }
 
 #[test]
-fn worktree_create_previews_the_endpoint_owned_checkout_path() {
+fn worktree_create_uses_project_root_when_worktree_list_omits_it() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
@@ -922,17 +922,57 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
     let [ClientShellAction::Endpoint { request, .. }] = &prepare.actions[..] else {
         panic!("new worktree should prepare through worktree.list");
     };
-    assert!(matches!(
-        &request.method,
-        crate::api::schema::Method::WorktreeList(params)
-            if params.workspace_id.as_deref() == Some("ws_1")
-    ));
     let request_id = request.id.clone();
-    assert!(
-        state
-            .handle_endpoint_result("boot-1", &request_id, Ok(worktree_list_result(None)))
-            .0
+    let (_, follow_up) = state.handle_endpoint_result(
+        "boot-1",
+        &request_id,
+        Ok(worktree_list_result_with_project_root(
+            None,
+            Some("p1"),
+            None,
+        )),
     );
+    let [ClientShellAction::Endpoint {
+        request: project_request,
+        ..
+    }] = &follow_up[..]
+    else {
+        panic!("missing worktree root should load project settings");
+    };
+    assert!(matches!(
+        &project_request.method,
+        crate::api::schema::Method::ProjectList(_)
+    ));
+    let project_request_id = project_request.id.clone();
+    let (repaint, actions) = state.handle_endpoint_result(
+        "boot-1",
+        &project_request_id,
+        Ok(crate::api::schema::ResponseResult::ProjectList {
+            projects: vec![crate::api::schema::ProjectInfo {
+                project_id: "p1".into(),
+                name: "repo".into(),
+                root_path: "/repo".into(),
+                workspace_id: Some("ws_1".into()),
+                worktree_root: Some(r"C:\Repository\worktrees".into()),
+                worktree_base: None,
+                default_agent: None,
+                lifecycle: crate::api::schema::ProjectLifecycle::default(),
+                preserve_patterns: Vec::new(),
+                environment: std::collections::BTreeMap::new(),
+                external_trackers: Vec::new(),
+            }],
+        }),
+    );
+    assert!(repaint);
+    assert!(actions.is_empty());
+
+    state.handle_input_bytes(b"feature/client-shell");
+    let expected_path = r"C:\Repository\worktrees\repo\feat-feature-client-shell";
+    assert!(matches!(
+        &state.overlay,
+        Some(ClientShellOverlay::WorktreeCreate(create))
+            if create.checkout_path == expected_path
+    ));
     let frame = state.compose(106, 30).expect("new worktree modal");
     let text = frame
         .cells
@@ -944,20 +984,9 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(text.contains("new worktree"));
-    assert!(text.contains("create and open"));
-    assert!(frame.cursor.as_ref().is_some_and(|cursor| cursor.visible));
+    assert!(text.contains(expected_path));
 
-    assert!(state
-        .handle_input_bytes(b"feature/client-shell")
-        .actions
-        .is_empty());
-    assert!(matches!(
-        &state.overlay,
-        Some(ClientShellOverlay::WorktreeCreate(create))
-            if create.checkout_path
-                == "/tmp/herdr-worktrees/repo/feature-client-shell"
-    ));
+    assert!(state.handle_input_bytes(b"\r").actions.is_empty());
     let submit = state.handle_input_bytes(b"\r");
     let [ClientShellAction::Endpoint { request, .. }] = &submit.actions[..] else {
         panic!("worktree create should use endpoint API");
@@ -965,10 +994,9 @@ fn worktree_create_previews_the_endpoint_owned_checkout_path() {
     assert!(matches!(
         &request.method,
         crate::api::schema::Method::WorktreeCreate(params)
-            if params.workspace_id.as_deref() == Some("ws_1")
-                && params.branch.as_deref() == Some("feature/client-shell")
-                && params.path.is_none()
-                && params.focus
+            if params.project_id.as_deref() == Some("p1")
+                && params.branch.as_deref() == Some("feat/feature-client-shell")
+                && params.path.as_deref() == Some(expected_path)
     ));
 }
 

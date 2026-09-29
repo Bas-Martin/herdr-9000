@@ -15,10 +15,44 @@ fn checkout_path_preview(root: &str, repo: &str, branch: &str) -> String {
 }
 
 impl ClientShellState {
-    fn endpoint_worktree_directory(&self) -> Option<String> {
-        self.snapshot
-            .as_deref()
+    fn endpoint_worktree_directory(&self, endpoint_id: &ClientEndpointId) -> Option<String> {
+        self.endpoints
+            .iter()
+            .find(|endpoint| &endpoint.endpoint_id == endpoint_id)
+            .and_then(|endpoint| endpoint.snapshot.as_deref())
             .map(|snapshot| snapshot.worktree_directory.clone())
+    }
+
+    fn open_worktree_create_overlay(
+        &mut self,
+        workspace_id: String,
+        project_id: String,
+        repo_name: String,
+        worktree_directory: Option<String>,
+    ) {
+        let Some(worktree_directory) = worktree_directory else {
+            self.endpoint_error =
+                Some("Unable to resolve a worktree directory for this project.".to_owned());
+            return;
+        };
+        let branch = "feat/".to_owned();
+        let checkout_path = checkout_path_preview(&worktree_directory, &repo_name, &branch);
+        self.overlay = Some(ClientShellOverlay::WorktreeCreate(
+            ClientWorktreeCreateOverlay {
+                source_workspace_id: workspace_id,
+                project_id: Some(project_id),
+                repo_name,
+                task_name: String::new(),
+                branch,
+                worktree_directory,
+                field: ClientWorktreeCreateField::TaskName,
+                branch_overridden: false,
+                checkout_path,
+                replace_on_type: false,
+                error: None,
+                creating: false,
+            },
+        ));
     }
 
     pub(super) fn insert_worktree_overlay_text(&mut self, text: &str) -> bool {
@@ -330,7 +364,7 @@ impl ClientShellState {
     }
 
     pub(super) fn submit_worktree_create(&mut self, outcome: &mut ClientShellInput) {
-        let (workspace_id, project_id, task_name, branch) = {
+        let (workspace_id, project_id, task_name, branch, checkout_path) = {
             let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
                 return;
             };
@@ -354,8 +388,9 @@ impl ClientShellState {
             create.task_name = task_name.clone();
             create.branch = branch.clone();
             create.replace_on_type = false;
-            create.checkout_path =
+            let checkout_path =
                 checkout_path_preview(&create.worktree_directory, &create.repo_name, &branch);
+            create.checkout_path = checkout_path.clone();
             create.creating = true;
             create.error = None;
             (
@@ -363,6 +398,7 @@ impl ClientShellState {
                 create.project_id.clone(),
                 task_name,
                 branch,
+                checkout_path,
             )
         };
         if !self.push_endpoint_method_with_kind(
@@ -373,7 +409,7 @@ impl ClientShellState {
                 cwd: None,
                 branch: Some(branch),
                 base: None,
-                path: None,
+                path: Some(checkout_path),
                 label: None,
                 focus: true,
                 trust_repository: false,
@@ -474,6 +510,8 @@ impl ClientShellState {
         &mut self,
         kind: PendingEndpointKind,
         result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+        endpoint_id: ClientEndpointId,
+        outcome: &mut ClientShellInput,
     ) -> bool {
         use crate::api::schema::ResponseResult;
 
@@ -489,31 +527,63 @@ impl ClientShellState {
                     );
                     return true;
                 };
-                let branch = "feat/".to_owned();
-                let Some(worktree_directory) = source
-                    .worktree_root
-                    .clone()
-                    .or_else(|| self.endpoint_worktree_directory())
-                else {
-                    return false;
-                };
-                let checkout_path =
-                    checkout_path_preview(&worktree_directory, &source.repo_name, &branch);
-                self.overlay = Some(ClientShellOverlay::WorktreeCreate(
-                    ClientWorktreeCreateOverlay {
-                        source_workspace_id: workspace_id,
-                        project_id: Some(project_id),
+                if let Some(worktree_directory) = source.worktree_root {
+                    self.open_worktree_create_overlay(
+                        workspace_id,
+                        project_id,
+                        source.repo_name,
+                        Some(worktree_directory),
+                    );
+                    return true;
+                }
+                let fallback_worktree_directory = self.endpoint_worktree_directory(&endpoint_id);
+                if !self.push_endpoint_method_to_endpoint(
+                    endpoint_id,
+                    crate::api::schema::Method::ProjectList(
+                        crate::api::schema::EmptyParams::default(),
+                    ),
+                    PendingEndpointKind::ResolveWorktreeCreatePath {
+                        workspace_id,
+                        project_id,
                         repo_name: source.repo_name,
-                        task_name: String::new(),
-                        branch,
-                        worktree_directory,
-                        field: ClientWorktreeCreateField::TaskName,
-                        branch_overridden: false,
-                        checkout_path,
-                        replace_on_type: false,
-                        error: None,
-                        creating: false,
+                        fallback_worktree_directory,
                     },
+                    outcome,
+                ) {
+                    self.endpoint_error =
+                        Some("Unable to load project settings for the worktree path.".to_owned());
+                }
+                true
+            }
+            (
+                PendingEndpointKind::ResolveWorktreeCreatePath {
+                    workspace_id,
+                    project_id,
+                    repo_name,
+                    fallback_worktree_directory,
+                },
+                Ok(ResponseResult::ProjectList { projects }),
+            ) => {
+                let Some(project) = projects
+                    .into_iter()
+                    .find(|project| project.project_id == project_id)
+                else {
+                    self.endpoint_error =
+                        Some("Project settings for this worktree could not be found.".to_owned());
+                    return true;
+                };
+                self.open_worktree_create_overlay(
+                    workspace_id,
+                    project_id,
+                    repo_name,
+                    project.worktree_root.or(fallback_worktree_directory),
+                );
+                true
+            }
+            (PendingEndpointKind::ResolveWorktreeCreatePath { .. }, Err(error)) => {
+                self.endpoint_error = Some(format!(
+                    "Unable to load project settings for the worktree path: {}",
+                    error.message
                 ));
                 true
             }

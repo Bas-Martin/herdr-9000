@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+- New worktrees now preview and use the selected project's worktree root, including when an endpoint omits it from its worktree listing.
+
 ## [0.8.2] - 2026-08-19
 
 ### Added
