@@ -155,6 +155,18 @@ herdr worktree remove --workspace ID [--force] [--trust-repository]
 
 worktree は、Git チェックアウトの出自情報を持つ通常の Herdr ワークスペースです。`worktree create` は Git worktree のチェックアウトを作成し、ワークスペースとして開き、親リポジトリのワークスペースとグループ化します。`--branch` が既存のローカルブランチを指す場合はそれをチェックアウトし、そうでなければ `--base` または `HEAD` からブランチを作成します。`--path` がない場合、チェックアウトは `<worktrees.directory>/<repo>/<branch-slug>` の下に作成されます。
 
+プロジェクトから作成する場合は、プロジェクトに設定されたベースを使用します。デフォルトは `origin/main` です。`origin/...` をベースに新しいブランチを作成する前に、Herdr はそのブランチを fetch し、失敗した場合は作成を中止します。既存のローカルブランチは、fetch や rebase を行わず、そのままチェックアウトします。
+
+ベースブランチは feature ブランチの push 先ではありません。`origin/main` を自動的に追跡せず、最初の通常の `git push` で同名のリモートブランチを公開して upstream を設定するには、元のリポジトリで次を実行します。
+
+```bash
+git config --local branch.autoSetupMerge simple
+git config --local push.default simple
+git config --local push.autoSetupRemote true
+```
+
+これらの設定はリンクされた worktree にも適用されます。既存の誤った upstream は別途修正してください。`push.default=simple` は、ローカルブランチと upstream の名前が異なる場合、通常の push を拒否します。
+
 `workspace close` は Herdr の状態だけを閉じます。リンクされた worktree ワークスペースが開いている間に親ワークスペースを閉じるには `--group` が必要です。指定しない場合、グループは開いたままになり `workspace_group_close_required` が返されます。`worktree remove` が明示的なチェックアウト削除の経路です。`git worktree remove` を実行し、ブランチは決して削除せず、Git がダーティなチェックアウトを拒否する場合は `--force` が必要です。
 
 Git はデフォルトで、別のユーザーが所有するリポジトリを拒否します。リポジトリを別途確認済みの場合は `--trust-repository` を渡すと、解決されたパスをそのコマンドでのみ信頼します。Herdr は Git 設定を変更しません。
