@@ -14,11 +14,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout custom branch
+      - name: Checkout main branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: custom
+          ref: main
 
       - name: Merge upstream master
         env:
@@ -32,8 +32,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/herdrdev/herdr.git
           git fetch --prune upstream master
-          git fetch origin custom
-          git switch --detach origin/custom
+          git fetch origin main
+          git switch --detach origin/main
 
           if ! git merge --no-edit upstream/master; then
             git merge --abort || true
@@ -41,8 +41,8 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --title "Upstream sync conflict" \
               --label "agent-ready" \
-              --body "The scheduled merge of herdrdev/herdr/master into custom failed. Resolve the conflict, preserve custom functionality, and open a PR into custom. Workflow run: $RUN_URL"
+              --body "The scheduled merge of herdrdev/herdr/master into main failed. Resolve the conflict, preserve custom functionality, and open a PR into main. Workflow run: $RUN_URL"
             exit 1
           fi
 
-          git push origin HEAD:custom
+          git push origin HEAD:main

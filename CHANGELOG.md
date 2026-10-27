@@ -4,6 +4,7 @@
 
 ### Fixed
 - New worktrees now preview and use the selected project's worktree root, including when an endpoint omits it from its worktree listing.
+- Creating a worktree from an `origin/` base now fetches that branch first and stops if the fetch fails.
 
 ## [0.8.2] - 2026-08-19
 

@@ -60,11 +60,17 @@ The executable provided by the fork is `herdr9000`:
 herdr9000
 ```
 
-To test the current issue-1 branch before it is merged into `custom`:
+`main` is the canonical development branch for this fork. The previous `custom`
+and `fix/project-worktree-root` branches are retained as historical safety points;
+new work and upstream synchronization target `main`.
 
-```bash
-npx -y github:Bas-Martin/herdr-9000#issue/1-project-workspace-registry
-```
+Local source changes preserved during consolidation are available on
+`backup/local-source-2026-10-27`. The previous `main` commit is tagged
+`backup/main-before-cleanup-2026-10-27`.
+
+The npx installer above still downloads the pinned `v0.8.2-herdr9000.1`
+prerelease, not a build of the latest source. Consolidating the repository does
+not update or replace existing local installations.
 
 then start it where the work lives:
 
