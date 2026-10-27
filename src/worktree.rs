@@ -528,6 +528,18 @@ pub(crate) fn run_worktree_add_command(
     let command = if local_branch_exists(repo_root, branch, trust_repository)? {
         build_worktree_add_existing_branch_command(repo_root, path, branch, trust_repository)
     } else {
+        if let Some(remote_branch) = base.strip_prefix("origin/") {
+            let mut args = repository_git_args(repo_root, trust_repository);
+            args.extend([
+                "fetch".to_string(),
+                "origin".to_string(),
+                format!("+refs/heads/{remote_branch}:refs/remotes/{base}"),
+            ]);
+            run_worktree_command(&WorktreeCommand {
+                program: "git".to_string(),
+                args,
+            })?;
+        }
         build_worktree_add_new_branch_command(repo_root, path, branch, base, trust_repository)
     };
     run_worktree_command(&command)
@@ -1085,6 +1097,68 @@ prunable stale
                 "worktree/brave-river"
             ]
         );
+    }
+
+    #[test]
+    fn new_worktree_fetches_remote_base_and_stops_on_fetch_failure() {
+        let remote = create_committed_repo("worktree-fetch-remote");
+        run_git(&remote, &["branch", "-M", "main"]);
+        let repo = unique_temp_path("worktree-fetch-repo");
+        let checkout = unique_temp_path("worktree-fetch-checkout");
+        run_git(
+            &remote,
+            &[
+                "clone",
+                "--quiet",
+                remote.to_str().unwrap(),
+                repo.to_str().unwrap(),
+            ],
+        );
+        run_git(&repo, &["config", "branch.autoSetupMerge", "simple"]);
+        std::fs::write(remote.join("README.md"), "updated main\n").unwrap();
+        run_git(&remote, &["commit", "--quiet", "-am", "update main"]);
+
+        run_worktree_add_command(&repo, &checkout, "feat/fresh", "origin/main", false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(checkout.join("README.md"))
+                .unwrap()
+                .trim(),
+            "updated main"
+        );
+
+        let missing_remote = unique_temp_path("worktree-missing-remote");
+        run_git(
+            &repo,
+            &[
+                "remote",
+                "set-url",
+                "origin",
+                missing_remote.to_str().unwrap(),
+            ],
+        );
+        let failed_checkout = unique_temp_path("worktree-fetch-failed");
+        assert!(run_worktree_add_command(
+            &repo,
+            &failed_checkout,
+            "feat/failed",
+            "origin/main",
+            false
+        )
+        .is_err());
+        assert!(!failed_checkout.exists());
+        assert!(!local_branch_exists(&repo, "feat/failed", false).unwrap());
+
+        run_git(&repo, &["worktree", "remove", checkout.to_str().unwrap()]);
+        run_worktree_add_command(&repo, &checkout, "feat/fresh", "origin/main", false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(checkout.join("README.md"))
+                .unwrap()
+                .trim(),
+            "updated main"
+        );
+        run_git(&repo, &["worktree", "remove", checkout.to_str().unwrap()]);
+        let _ = std::fs::remove_dir_all(repo);
+        let _ = std::fs::remove_dir_all(remote);
     }
 
     #[test]
