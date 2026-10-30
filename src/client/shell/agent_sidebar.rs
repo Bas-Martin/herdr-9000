@@ -339,9 +339,7 @@ pub(super) fn render_agent_row(
         } else {
             Modifier::DIM
         });
-    let secondary = Style::default()
-        .fg(palette.overlay0)
-        .add_modifier(Modifier::DIM);
+    let secondary = Style::default().fg(palette.subtext0);
     let icon = (
         status_icon(row.status, config.status_indicators),
         Style::default().fg(status_color(row.status, palette)),
