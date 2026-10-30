@@ -90,8 +90,12 @@ pub(crate) fn spawn_pane(
             "tmux agent command must not be empty",
         ));
     }
+    let environment_target = target
+        .is_none()
+        .then(|| std::env::var_os("TMUX_PANE"))
+        .flatten();
     let target = target
-        .or_else(|| std::env::var_os("TMUX_PANE").and_then(|value| value.to_str()))
+        .or_else(|| environment_target.as_ref().and_then(|value| value.to_str()))
         .ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::NotFound,
