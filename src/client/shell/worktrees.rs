@@ -31,8 +31,7 @@ impl ClientShellState {
         worktree_directory: Option<String>,
     ) {
         let Some(worktree_directory) = worktree_directory else {
-            self.endpoint_error =
-                Some("Unable to resolve a worktree directory for this project.".to_owned());
+            self.set_endpoint_error("Unable to resolve a worktree directory for this project.");
             return;
         };
         let branch = "feat/".to_owned();
@@ -42,13 +41,12 @@ impl ClientShellState {
                 source_workspace_id: workspace_id,
                 project_id: Some(project_id),
                 repo_name,
-                task_name: String::new(),
-                branch,
+                task_name: TextEditor::default(),
+                branch: TextEditor::new(&branch, false),
                 worktree_directory,
                 field: ClientWorktreeCreateField::TaskName,
                 branch_overridden: false,
                 checkout_path,
-                replace_on_type: false,
                 error: None,
                 creating: false,
             },
@@ -58,32 +56,26 @@ impl ClientShellState {
     pub(super) fn insert_worktree_overlay_text(&mut self, text: &str) -> bool {
         match self.overlay.as_mut() {
             Some(ClientShellOverlay::WorktreeCreate(create)) if !create.creating => {
-                if create.replace_on_type {
-                    create.branch.clear();
-                    create.replace_on_type = false;
-                }
-                match create.field {
-                    ClientWorktreeCreateField::TaskName => {
-                        create.task_name.push_str(text);
-                        if !create.branch_overridden {
-                            create.branch =
-                                crate::worktree::branch_name_for_task(&create.task_name);
-                        }
-                    }
+                let changed = match create.field {
+                    ClientWorktreeCreateField::TaskName => create.task_name.insert(text),
                     ClientWorktreeCreateField::Branch => {
-                        create.branch.push_str(text);
-                        create.branch_overridden = true;
+                        let changed = create.branch.insert(text);
+                        create.branch_overridden |= changed;
+                        changed
                     }
+                };
+                if changed {
+                    self.sync_worktree_create_path();
                 }
-                self.sync_worktree_create_path();
                 true
             }
             Some(ClientShellOverlay::WorktreeOpen(open))
                 if open.search_focused && !open.opening =>
             {
-                open.query.push_str(text);
-                if let Some(first) = open.filtered_indices().first().copied() {
-                    open.selected = first;
+                if open.query.insert(text) {
+                    if let Some(first) = open.filtered_indices().first().copied() {
+                        open.selected = first;
+                    }
                 }
                 true
             }
@@ -105,6 +97,26 @@ impl ClientShellState {
                         ClientWorktreeCreateOverlay { creating: true, .. }
                     ))
                 );
+                if !creating {
+                    if let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut()
+                    {
+                        let edit = match create.field {
+                            ClientWorktreeCreateField::TaskName => create.task_name.handle_key(key),
+                            ClientWorktreeCreateField::Branch => {
+                                let edit = create.branch.handle_key(key);
+                                create.branch_overridden |= edit == Some(true);
+                                edit
+                            }
+                        };
+                        if let Some(content_changed) = edit {
+                            if content_changed {
+                                self.sync_worktree_create_path();
+                            }
+                            outcome.repaint = true;
+                            return true;
+                        }
+                    }
+                }
                 let advance_field = |state: &mut Self| {
                     if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut()
                     {
@@ -146,11 +158,6 @@ impl ClientShellState {
                                 if create.task_name.trim().is_empty() {
                                     create.error = Some("task name is required".to_owned());
                                 } else {
-                                    if !create.branch_overridden {
-                                        create.branch = crate::worktree::branch_name_for_task(
-                                            &create.task_name,
-                                        );
-                                    }
                                     create.field = ClientWorktreeCreateField::Branch;
                                     create.error = None;
                                 }
@@ -159,41 +166,6 @@ impl ClientShellState {
                         } else {
                             self.submit_worktree_create(outcome);
                         }
-                    }
-                    KeyCode::Backspace if !creating => {
-                        if let Some(ClientShellOverlay::WorktreeCreate(create)) =
-                            self.overlay.as_mut()
-                        {
-                            match create.field {
-                                ClientWorktreeCreateField::TaskName => {
-                                    create.task_name.pop();
-                                    if !create.branch_overridden {
-                                        create.branch = crate::worktree::branch_name_for_task(
-                                            &create.task_name,
-                                        );
-                                    }
-                                }
-                                ClientWorktreeCreateField::Branch => {
-                                    create.branch.pop();
-                                    create.branch_overridden = true;
-                                }
-                            }
-                        }
-                        self.sync_worktree_create_path();
-                        outcome.repaint = true;
-                    }
-                    KeyCode::Char(character)
-                        if !creating
-                            && modifiers
-                                .difference(crossterm::event::KeyModifiers::SHIFT)
-                                .is_empty() =>
-                    {
-                        let text = key
-                            .generated_text
-                            .clone()
-                            .unwrap_or_else(|| character.to_string());
-                        self.insert_worktree_overlay_text(&text);
-                        outcome.repaint = true;
                     }
                     _ => {}
                 }
@@ -215,6 +187,19 @@ impl ClientShellState {
                         }
                     ))
                 );
+                if !opening && search_focused {
+                    if let Some(ClientShellOverlay::WorktreeOpen(open)) = self.overlay.as_mut() {
+                        if let Some(content_changed) = open.query.handle_key(key) {
+                            if content_changed {
+                                if let Some(first) = open.filtered_indices().first().copied() {
+                                    open.selected = first;
+                                }
+                            }
+                            outcome.repaint = true;
+                            return true;
+                        }
+                    }
+                }
                 match code {
                     KeyCode::Esc if !opening => {
                         self.overlay = None;
@@ -229,35 +214,21 @@ impl ClientShellState {
                         self.move_worktree_open_selection(1);
                         outcome.repaint = true;
                     }
+                    KeyCode::Char('n' | 'p')
+                        if !opening && modifiers == crossterm::event::KeyModifiers::CONTROL =>
+                    {
+                        self.move_worktree_open_selection(if code == KeyCode::Char('n') {
+                            1
+                        } else {
+                            -1
+                        });
+                        outcome.repaint = true;
+                    }
                     KeyCode::Char('/') if !opening && !search_focused => {
                         if let Some(ClientShellOverlay::WorktreeOpen(open)) = self.overlay.as_mut()
                         {
                             open.search_focused = true;
                         }
-                        outcome.repaint = true;
-                    }
-                    KeyCode::Backspace if !opening && search_focused => {
-                        if let Some(ClientShellOverlay::WorktreeOpen(open)) = self.overlay.as_mut()
-                        {
-                            open.query.pop();
-                            if let Some(first) = open.filtered_indices().first().copied() {
-                                open.selected = first;
-                            }
-                        }
-                        outcome.repaint = true;
-                    }
-                    KeyCode::Char(character)
-                        if !opening
-                            && search_focused
-                            && modifiers
-                                .difference(crossterm::event::KeyModifiers::SHIFT)
-                                .is_empty() =>
-                    {
-                        let text = key
-                            .generated_text
-                            .clone()
-                            .unwrap_or_else(|| character.to_string());
-                        self.insert_worktree_overlay_text(&text);
                         outcome.repaint = true;
                     }
                     _ => {}
@@ -316,9 +287,8 @@ impl ClientShellState {
             .is_some_and(|worktree| worktree.is_linked_worktree);
         let kind = match action {
             KeybindAction::NewWorktree | KeybindAction::OpenWorktree if linked => {
-                self.endpoint_error = Some(
-                    "New and open worktree actions start from the repo parent workspace."
-                        .to_owned(),
+                self.set_endpoint_error(
+                    "New and open worktree actions start from the repo parent workspace.",
                 );
                 outcome.repaint = true;
                 return;
@@ -330,8 +300,7 @@ impl ClientShellState {
                 workspace_id: workspace_id.clone(),
             },
             KeybindAction::RemoveWorktree if !linked => {
-                self.endpoint_error =
-                    Some("This workspace is not a Herdr-managed worktree checkout.".to_owned());
+                self.set_endpoint_error("This workspace is not a Herdr-managed worktree checkout.");
                 outcome.repaint = true;
                 return;
             }
@@ -355,6 +324,10 @@ impl ClientShellState {
         let Some(ClientShellOverlay::WorktreeCreate(create)) = self.overlay.as_mut() else {
             return;
         };
+        if !create.branch_overridden {
+            create.branch =
+                TextEditor::new(&crate::worktree::branch_name_for_task(&create.task_name), false);
+        }
         create.checkout_path = checkout_path_preview(
             &create.worktree_directory,
             &create.repo_name,
@@ -385,9 +358,8 @@ impl ClientShellState {
                 outcome.repaint = true;
                 return;
             }
-            create.task_name = task_name.clone();
-            create.branch = branch.clone();
-            create.replace_on_type = false;
+            create.task_name.trim_and_accept();
+            create.branch.trim_and_accept();
             let checkout_path =
                 checkout_path_preview(&create.worktree_directory, &create.repo_name, &branch);
             create.checkout_path = checkout_path.clone();
@@ -411,7 +383,7 @@ impl ClientShellState {
                 base: None,
                 path: Some(checkout_path),
                 label: None,
-                focus: true,
+                focus: false,
                 trust_repository: false,
             }),
             PendingEndpointKind::WorktreeCreate,
@@ -521,9 +493,8 @@ impl ClientShellState {
                 Ok(ResponseResult::WorktreeList { source, .. }),
             ) => {
                 let Some(project_id) = source.project_id.clone() else {
-                    self.endpoint_error = Some(
-                        "Register this repository as a project before creating a worktree."
-                            .to_owned(),
+                    self.set_endpoint_error(
+                        "Register this repository as a project before creating a worktree.",
                     );
                     return true;
                 };
@@ -550,8 +521,9 @@ impl ClientShellState {
                     },
                     outcome,
                 ) {
-                    self.endpoint_error =
-                        Some("Unable to load project settings for the worktree path.".to_owned());
+                    self.set_endpoint_error(
+                        "Unable to load project settings for the worktree path.",
+                    );
                 }
                 true
             }
@@ -568,8 +540,7 @@ impl ClientShellState {
                     .into_iter()
                     .find(|project| project.project_id == project_id)
                 else {
-                    self.endpoint_error =
-                        Some("Project settings for this worktree could not be found.".to_owned());
+                    self.set_endpoint_error("Project settings for this worktree could not be found.");
                     return true;
                 };
                 self.open_worktree_create_overlay(
@@ -581,7 +552,7 @@ impl ClientShellState {
                 true
             }
             (PendingEndpointKind::ResolveWorktreeCreatePath { .. }, Err(error)) => {
-                self.endpoint_error = Some(format!(
+                self.set_endpoint_error(format!(
                     "Unable to load project settings for the worktree path: {}",
                     error.message
                 ));
@@ -607,14 +578,14 @@ impl ClientShellState {
                     })
                     .collect::<Vec<_>>();
                 if entries.is_empty() {
-                    self.endpoint_error = Some("No Git worktrees found for this repo.".to_owned());
+                    self.set_endpoint_error("No Git worktrees found for this repo.");
                 } else {
                     self.overlay = Some(ClientShellOverlay::WorktreeOpen(
                         ClientWorktreeOpenOverlay {
                             source_workspace_id: workspace_id,
                             entries,
                             selected: 0,
-                            query: String::new(),
+                            query: TextEditor::default(),
                             search_focused: false,
                             error: None,
                             opening: false,
@@ -642,13 +613,26 @@ impl ClientShellState {
                         },
                     ));
                 } else {
-                    self.endpoint_error =
-                        Some("This workspace is not a Herdr-managed worktree checkout.".to_owned());
+                    self.set_endpoint_error(
+                        "This workspace is not a Herdr-managed worktree checkout.",
+                    );
                 }
                 true
             }
-            (PendingEndpointKind::WorktreeCreate, Ok(ResponseResult::WorktreeCreated { .. }))
-            | (PendingEndpointKind::WorktreeOpen, Ok(ResponseResult::WorktreeOpened { .. }))
+            (
+                PendingEndpointKind::WorktreeCreate,
+                Ok(ResponseResult::WorktreeCreated { tab, .. }),
+            ) => {
+                self.overlay = None;
+                self.push_endpoint_method(
+                    crate::api::schema::Method::TabFocus(crate::api::schema::TabTarget {
+                        tab_id: tab.tab_id,
+                    }),
+                    outcome,
+                );
+                true
+            }
+            (PendingEndpointKind::WorktreeOpen, Ok(ResponseResult::WorktreeOpened { .. }))
             | (
                 PendingEndpointKind::WorktreeRemove { .. },
                 Ok(ResponseResult::WorktreeRemoved { .. }),
@@ -671,7 +655,9 @@ impl ClientShellState {
                 true
             }
             (PendingEndpointKind::WorktreeRemove { forced: false }, Err(error))
-                if error.code.as_deref() == Some("dirty_worktree_requires_force") =>
+                if error.code.as_deref() == Some("dirty_worktree_requires_force")
+                    || (error.code.as_deref() == Some("worktree_remove_failed")
+                        && crate::worktree::is_not_working_tree_remove_error(&error.message)) =>
             {
                 if let Some(ClientShellOverlay::WorktreeRemove(remove)) = self.overlay.as_mut() {
                     remove.removing = false;
@@ -694,8 +680,7 @@ impl ClientShellState {
                 Err(_),
             ) => true,
             (_, Ok(_)) => {
-                self.endpoint_error =
-                    Some("endpoint returned an unexpected worktree result".to_owned());
+                self.set_endpoint_error("endpoint returned an unexpected worktree result");
                 true
             }
             (
@@ -710,6 +695,7 @@ impl ClientShellState {
                 | PendingEndpointKind::PaneScroll { .. }
                 | PendingEndpointKind::WordSelection { .. }
                 | PendingEndpointKind::PaneLinkActivate { .. }
+                | PendingEndpointKind::PaneLinkResolve { .. }
                 | PendingEndpointKind::CopyMotion { .. }
                 | PendingEndpointKind::CopySearch { .. }
                 | PendingEndpointKind::ProjectList { .. }

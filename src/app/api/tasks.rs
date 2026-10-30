@@ -443,14 +443,15 @@ impl App {
             }
         };
         let request_id = format!("task-agent-prompt:{task_id}");
-        match self.queue_agent_prompt(
-            request_id,
-            AgentPromptParams {
-                target,
-                text: prompt,
-                wait: None,
-            },
-        ) {
+        let params = AgentPromptParams {
+            target,
+            text: prompt,
+            wait: None,
+        };
+        match self
+            .validate_agent_prompt(request_id, &params)
+            .and_then(|validated| self.submit_agent_prompt(validated, &params))
+        {
             Ok((_id, _agent, completion)) => {
                 let event_tx = self.event_tx.clone();
                 std::thread::spawn(move || {
