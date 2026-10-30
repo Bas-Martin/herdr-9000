@@ -559,6 +559,19 @@ fn integration_target_values() -> Vec<&'static str> {
     values
 }
 
+fn id_command(name: &'static str, id: &'static str, about: &'static str) -> Command {
+    Command::new(name).about(about).arg(required(id, id))
+}
+
+fn env_option() -> Arg {
+    repeatable_option("env", "KEY=VALUE")
+        .help("Set an environment variable for the launched process")
+}
+
+fn repeatable_option(name: &'static str, value_name: &'static str) -> Arg {
+    option(name, value_name).action(ArgAction::Append)
+}
+
 fn json_flag() -> Arg {
     flag("json")
 }
