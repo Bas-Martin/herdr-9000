@@ -186,51 +186,82 @@ pub(crate) fn preserve_ignored_files(
     source_repo_root: &Path,
     destination: &Path,
     patterns: &[String],
+    trust_repository: bool,
 ) -> Result<(), String> {
     if patterns.is_empty() {
         return Ok(());
     }
-    let tracked: HashSet<String> = git_file_paths(source_repo_root, &["ls-files"])?
+    let worktrees = list_existing_worktrees(source_repo_root, trust_repository)?;
+    let main = worktrees
+        .first()
+        .filter(|worktree| !worktree.is_bare)
+        .ok_or("main repository working directory is unavailable")?;
+    let source_repo_root = std::fs::canonicalize(&main.path)
+        .map_err(|err| format!("failed to resolve main repository: {err}"))?;
+    let destination = std::fs::canonicalize(destination)
+        .map_err(|err| format!("failed to resolve destination worktree: {err}"))?;
+    let tracked: HashSet<String> = git_file_paths(&destination, &["ls-files"], trust_repository)?
         .iter()
         .map(|path| normalize_repo_relative_path(path))
         .collect();
-    let mut candidates = git_file_paths(
-        source_repo_root,
-        &["ls-files", "--others", "--exclude-standard"],
+    let candidates = git_file_paths(
+        &source_repo_root,
+        &["ls-files", "--others"],
+        trust_repository,
     )?;
-    candidates.extend(git_file_paths(
-        source_repo_root,
-        &["ls-files", "--others", "--ignored", "--exclude-standard"],
-    )?);
-    let mut copied = HashSet::new();
     for candidate in candidates {
-        let source = source_repo_root.join(&candidate);
         let relative = normalize_repo_relative_path(&candidate);
         if relative.is_empty()
+            || relative.starts_with('/')
             || relative
                 .split('/')
                 .any(|component| component == ".git" || component == "..")
-            || !copied.insert(relative.clone())
+            || !candidate
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)))
             || tracked.contains(&relative)
+            || relative
+                .match_indices('/')
+                .any(|(index, _)| tracked.contains(&relative[..index]))
+            || !matches_preserve_pattern(&relative, patterns)
         {
             continue;
         }
-        let metadata = std::fs::symlink_metadata(&source)
-            .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-        if metadata.file_type().is_symlink() {
+        let source = source_repo_root.join(candidate);
+        let metadata = match std::fs::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(format!(
+                    "failed to inspect preserved path {relative}: {err}"
+                ))
+            }
+        };
+        if !metadata.is_file() {
             continue;
         }
-        if metadata.is_dir() {
-            copy_preserved_directory(&source, destination, &relative, patterns, &tracked)?;
-        } else if metadata.is_file() && matches_preserve_pattern(&relative, patterns) {
-            copy_preserved_file(&source, destination, &relative)?;
+        let source = match std::fs::canonicalize(&source) {
+            Ok(source) => source,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(format!(
+                    "failed to resolve preserved path {relative}: {err}"
+                ))
+            }
+        };
+        if source.starts_with(&source_repo_root) {
+            copy_preserved_file(&source, &destination, &relative)?;
         }
     }
     Ok(())
 }
 
-fn git_file_paths(repo_root: &Path, args: &[&str]) -> Result<Vec<PathBuf>, String> {
-    let mut command = repository_git_command(repo_root, false);
+fn git_file_paths(
+    repo_root: &Path,
+    args: &[&str],
+    trust_repository: bool,
+) -> Result<Vec<PathBuf>, String> {
+    let mut command = repository_git_command(repo_root, trust_repository);
     command.args(args).arg("-z");
     let output = command
         .output()
@@ -253,50 +284,56 @@ fn normalize_repo_relative_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn copy_preserved_directory(
-    source: &Path,
-    destination: &Path,
-    relative: &str,
-    patterns: &[String],
-    tracked: &HashSet<String>,
-) -> Result<(), String> {
-    let entries = std::fs::read_dir(source)
-        .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-        let entry_path = entry.path();
-        let entry_relative = format!("{relative}/{}", entry.file_name().to_string_lossy());
-        if entry_relative
-            .split('/')
-            .any(|component| component == ".git" || component == "..")
-        {
-            continue;
-        }
-        let metadata = std::fs::symlink_metadata(&entry_path)
-            .map_err(|err| format!("failed to inspect preserved path {entry_relative}: {err}"))?;
-        if metadata.file_type().is_symlink() {
-            continue;
-        }
-        if metadata.is_dir() {
-            copy_preserved_directory(&entry_path, destination, &entry_relative, patterns, tracked)?;
-        } else if metadata.is_file()
-            && !tracked.contains(&entry_relative)
-            && matches_preserve_pattern(&entry_relative, patterns)
-        {
-            copy_preserved_file(&entry_path, destination, &entry_relative)?;
-        }
-    }
-    Ok(())
-}
-
 fn copy_preserved_file(source: &Path, destination: &Path, relative: &str) -> Result<(), String> {
-    let target = destination.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
+    let relative_path = Path::new(relative);
+    if let Some(relative_parent) = relative_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        let mut parent = destination.to_path_buf();
+        for component in relative_parent.components() {
+            parent.push(component);
+            let metadata = match std::fs::symlink_metadata(&parent) {
+                Ok(metadata) => metadata,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    match std::fs::create_dir(&parent) {
+                        Ok(()) => continue,
+                        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                            std::fs::symlink_metadata(&parent)
+                                .map_err(|err| format!("failed to inspect {relative}: {err}"))?
+                        }
+                        Err(err) => return Err(format!("failed to preserve {relative}: {err}")),
+                    }
+                }
+                Err(err) => return Err(format!("failed to inspect {relative}: {err}")),
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Ok(());
+            }
+        }
     }
-    std::fs::copy(source, &target)
+    let target = destination.join(relative_path);
+    let mut source = match std::fs::File::open(source) {
+        Ok(source) => source,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("failed to read preserved path {relative}: {err}")),
+    };
+    let permissions = source
+        .metadata()
+        .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?
+        .permissions();
+    let mut target = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+    {
+        Ok(target) => target,
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(err) => return Err(format!("failed to preserve {relative}: {err}")),
+    };
+    target
+        .set_permissions(permissions)
+        .and_then(|()| std::io::copy(&mut source, &mut target))
         .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
     Ok(())
 }
@@ -406,8 +443,9 @@ pub(crate) fn build_worktree_remove_command(
 
 pub(crate) fn is_dirty_worktree_remove_error(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
-    lower.contains("contains modified or untracked files")
-        && lower.contains("use --force to delete it")
+    (lower.contains("contains modified or untracked files")
+        && lower.contains("use --force to delete it"))
+        || lower.contains("working trees containing submodules cannot be moved or removed")
 }
 
 pub(crate) fn is_not_working_tree_remove_error(message: &str) -> bool {
@@ -547,6 +585,8 @@ pub(crate) fn run_worktree_add_command(
 
 pub(crate) fn run_worktree_command(command: &WorktreeCommand) -> Result<(), String> {
     let output = crate::noninteractive_process::command(&command.program)
+        // Removal errors are classified by Git's English diagnostics.
+        .env("LC_ALL", "C")
         .args(&command.args)
         .output()
         .map_err(|err| err.to_string())?;
@@ -717,6 +757,8 @@ pub(crate) fn list_existing_worktrees(
     repo_root: &Path,
     trust_repository: bool,
 ) -> Result<Vec<ExistingWorktree>, String> {
+    #[cfg(test)]
+    test_list_gate::wait(repo_root);
     let output = repository_git_command(repo_root, trust_repository)
         .args(["worktree", "list", "--porcelain"])
         .output()
@@ -733,6 +775,47 @@ pub(crate) fn list_existing_worktrees(
     } else {
         stderr
     })
+}
+
+#[cfg(test)]
+pub(crate) mod test_list_gate {
+    use std::path::{Path, PathBuf};
+    use std::sync::{mpsc, Mutex};
+
+    struct Gate {
+        path: PathBuf,
+        entered: mpsc::Sender<()>,
+        release: mpsc::Receiver<()>,
+    }
+
+    static GATES: Mutex<Vec<Gate>> = Mutex::new(Vec::new());
+
+    pub(crate) fn block(path: &Path) -> (mpsc::Receiver<()>, mpsc::Sender<()>) {
+        let (entered, entry_rx) = mpsc::channel();
+        let (release_tx, release) = mpsc::channel();
+        GATES.lock().unwrap().push(Gate {
+            path: super::canonical_or_original(path),
+            entered,
+            release,
+        });
+        (entry_rx, release_tx)
+    }
+
+    pub(super) fn wait(path: &Path) {
+        let gate = {
+            let mut gates = GATES.lock().unwrap();
+            gates
+                .iter()
+                .position(|gate| gate.path == super::canonical_or_original(path))
+                .map(|index| gates.remove(index))
+        };
+        if let Some(gate) = gate {
+            gate.entered.send(()).unwrap();
+            gate.release
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("test must release worktree discovery without blocking the server loop");
+        }
+    }
 }
 
 fn worktree_list_contains_path(
@@ -1050,6 +1133,72 @@ prunable stale
         assert!(!is_dirty_worktree_remove_error(
             "fatal: '/w/herdr' contains a locked worktree, use --force only if you know why"
         ));
+    }
+
+    #[test]
+    fn submodule_remove_error_requires_force_confirmation() {
+        assert!(is_dirty_worktree_remove_error(
+            "fatal: working trees containing submodules cannot be moved or removed"
+        ));
+    }
+
+    #[test]
+    fn submodule_worktree_removal_requires_explicit_force() {
+        let repo = create_committed_repo("submodule-remove-repo");
+        let submodule = create_committed_repo("submodule-remove-source");
+        let checkout = unique_temp_path("submodule-remove-checkout");
+        run_git(
+            &repo,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--quiet",
+                submodule.to_str().unwrap(),
+                "sub",
+            ],
+        );
+        run_git(&repo, &["commit", "--quiet", "-am", "add submodule"]);
+        let add = build_worktree_add_new_branch_command(
+            &repo,
+            &checkout,
+            "worktree/submodule-remove",
+            "HEAD",
+            false,
+        );
+        run_worktree_command(&add).unwrap();
+        run_git(
+            &checkout,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "update",
+                "--init",
+                "--quiet",
+            ],
+        );
+        assert!(!checkout_has_dirty_files(&checkout, false).unwrap());
+
+        let remove = build_worktree_remove_command(&repo, &checkout, false, false);
+        let error = run_worktree_command(&remove).unwrap_err();
+        assert!(is_dirty_worktree_remove_error(&error), "{error}");
+        assert!(checkout.join("sub/README.md").exists());
+
+        std::fs::write(checkout.join("sub/README.md"), "uncommitted change\n").unwrap();
+        let error = run_worktree_command(&remove).unwrap_err();
+        assert!(is_dirty_worktree_remove_error(&error), "{error}");
+        assert!(checkout.join("sub/README.md").exists());
+
+        let forced = build_worktree_remove_command(&repo, &checkout, true, false);
+        run_worktree_remove_command_with_recovery(&forced, &repo, &checkout, true, false).unwrap();
+        assert!(!checkout.exists());
+        assert!(!worktree_list_contains_path(&repo, &checkout, false).unwrap());
+        assert!(repo.join("sub/README.md").exists());
+
+        std::fs::remove_dir_all(repo).unwrap();
+        std::fs::remove_dir_all(submodule).unwrap();
     }
 
     #[test]

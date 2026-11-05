@@ -37,8 +37,8 @@ pub(crate) struct Project {
     pub(crate) worktree_base: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) default_agent: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) preserve_patterns: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) preserve_patterns: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "ProjectLifecycle::is_empty")]
     pub(crate) lifecycle: ProjectLifecycle,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -72,10 +72,29 @@ pub(crate) struct ProjectRegistry {
     pub(crate) version: u32,
     #[serde(default)]
     pub(crate) projects: Vec<Project>,
+    #[serde(default = "default_preserve_patterns")]
+    pub(crate) default_preserve_patterns: Vec<String>,
 }
 
 fn default_registry_version() -> u32 {
     1
+}
+
+pub(crate) fn default_preserve_patterns() -> Vec<String> {
+    [
+        ".env",
+        ".env.keys",
+        ".env.local",
+        ".env.*.local",
+        ".envrc",
+        "docker-compose.override.yml",
+        "**/appsettings.Local.json",
+        "**/local.settings.json",
+        "**/cypress.env.json",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect()
 }
 
 impl Default for ProjectRegistry {
@@ -83,11 +102,21 @@ impl Default for ProjectRegistry {
         Self {
             version: default_registry_version(),
             projects: Vec::new(),
+            default_preserve_patterns: default_preserve_patterns(),
         }
     }
 }
 
 impl ProjectRegistry {
+    pub(crate) fn effective_preserve_patterns<'a>(
+        &'a self,
+        project: Option<&'a Project>,
+    ) -> &'a [String] {
+        project
+            .and_then(|project| project.preserve_patterns.as_deref())
+            .unwrap_or(&self.default_preserve_patterns)
+    }
+
     pub(crate) fn find(&self, id: &str) -> Option<&Project> {
         self.projects.iter().find(|project| project.id == id)
     }
@@ -122,7 +151,7 @@ impl Project {
             worktree_root,
             worktree_base: None,
             default_agent: None,
-            preserve_patterns: Vec::new(),
+            preserve_patterns: None,
             lifecycle: ProjectLifecycle::default(),
             environment: BTreeMap::new(),
             external_trackers: Vec::new(),

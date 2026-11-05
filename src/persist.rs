@@ -12,13 +12,15 @@ mod resources;
 mod restore;
 mod snapshot;
 mod tasks;
+mod writer;
 
-pub use self::io::{clear, clear_history, load, load_history, save};
+pub use self::io::{clear_history, load, load_history};
 
 pub(crate) use self::automations::{load as load_automations, save as save_automations};
 pub(crate) use self::projects::{load as load_projects, save as save_projects};
 pub(crate) use self::resources::{load as load_resources, save as save_resources};
 pub use self::restore::restore;
+pub(crate) use self::restore::restored_worktree_space_membership;
 #[cfg(unix)]
 pub use self::restore::{handoff_pane_aliases, restore_handoff};
 pub use self::snapshot::{
@@ -26,3 +28,4 @@ pub use self::snapshot::{
     SessionSnapshot, TabSnapshot, WorkspaceSnapshot,
 };
 pub(crate) use self::tasks::{load as load_tasks, save as save_tasks};
+pub(crate) use self::writer::SessionWriter;
