@@ -1157,6 +1157,12 @@ impl App {
             Method::ProjectDelete(target) => {
                 return self.handle_project_delete(request.id, target);
             }
+            Method::WorktreePreservePatternsGet(target) => {
+                return self.handle_worktree_preserve_patterns_get(request.id, target);
+            }
+            Method::WorktreePreservePatternsSet(params) => {
+                return self.handle_worktree_preserve_patterns_set(request.id, params);
+            }
             Method::TaskCreate(params) => return self.handle_task_create(request.id, params),
             Method::TaskList(params) => return self.handle_task_list(request.id, params),
             Method::TaskOpen(params) => return self.handle_task_open(request.id, params),

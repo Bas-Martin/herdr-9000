@@ -632,15 +632,15 @@ pub(super) struct ClientProjectSettingsOverlay {
 
 #[derive(Debug)]
 pub(super) struct ClientProjectPatternsOverlay {
-    pub(super) project_id: String,
-    pub(super) name: String,
-    pub(super) root_path: String,
-    pub(super) worktree_root: Option<String>,
-    pub(super) worktree_base: Option<String>,
-    pub(super) patterns: Vec<String>,
-    pub(super) selected: usize,
+    pub(super) endpoint_id: ClientEndpointId,
+    pub(super) project_id: Option<String>,
+    pub(super) generation: u64,
+    pub(super) inherited: bool,
+    pub(super) dirty: bool,
     pub(super) input: TextEditor,
-    pub(super) editing: bool,
+    pub(super) loading: bool,
+    pub(super) saving: bool,
+    pub(super) loaded: bool,
     pub(super) error: Option<String>,
 }
 
@@ -831,6 +831,11 @@ pub(super) enum PendingEndpointKind {
     TaskFileWrite,
     ProjectCreate,
     ProjectUpdate,
+    PreservePatterns {
+        project_id: Option<String>,
+        generation: u64,
+        saving: bool,
+    },
 }
 
 pub(super) struct PendingEndpointRequest {

@@ -33,7 +33,11 @@ impl App {
                 run: project.lifecycle.run.clone(),
                 teardown: project.lifecycle.teardown.clone(),
             },
-            preserve_patterns: project.preserve_patterns.clone(),
+            preserve_patterns: self
+                .state
+                .projects
+                .effective_preserve_patterns(Some(project))
+                .to_vec(),
             environment: project.environment.clone(),
             external_trackers: project.external_trackers.clone(),
         }
@@ -62,6 +66,72 @@ impl App {
         )
     }
 
+    pub(super) fn handle_worktree_preserve_patterns_get(
+        &self,
+        id: String,
+        target: crate::api::schema::WorktreePreservePatternsTarget,
+    ) -> String {
+        let project = match target.project_id.as_deref() {
+            Some(project_id) => match self.state.projects.find(project_id) {
+                Some(project) => Some(project),
+                None => return project_not_found(id, project_id),
+            },
+            None => None,
+        };
+        let patterns = self
+            .state
+            .projects
+            .effective_preserve_patterns(project)
+            .to_vec();
+        let inherited = project.is_some_and(|project| project.preserve_patterns.is_none());
+        encode_success(
+            id,
+            ResponseResult::WorktreePreservePatterns {
+                project_id: target.project_id,
+                patterns,
+                inherited,
+            },
+        )
+    }
+
+    pub(super) fn handle_worktree_preserve_patterns_set(
+        &mut self,
+        id: String,
+        params: crate::api::schema::WorktreePreservePatternsSetParams,
+    ) -> String {
+        let patterns = match normalize_preserve_patterns(params.patterns) {
+            Ok(patterns) => patterns,
+            Err(message) => return encode_error(id, "invalid_params", message),
+        };
+        let previous = match params.project_id.as_deref() {
+            Some(project_id) => {
+                let Some(project) = self.state.projects.find_mut(project_id) else {
+                    return project_not_found(id, project_id);
+                };
+                std::mem::replace(&mut project.preserve_patterns, patterns)
+            }
+            None => Some(std::mem::replace(
+                &mut self.state.projects.default_preserve_patterns,
+                patterns.unwrap_or_else(crate::project::default_preserve_patterns),
+            )),
+        };
+        if let Err(err) = crate::persist::save_projects(&self.state.projects) {
+            if let Some(project_id) = params.project_id.as_deref() {
+                if let Some(project) = self.state.projects.find_mut(project_id) {
+                    project.preserve_patterns = previous;
+                }
+            } else if let Some(previous) = previous {
+                self.state.projects.default_preserve_patterns = previous;
+            }
+            return encode_error(id, "project_save_failed", err.to_string());
+        }
+        self.handle_worktree_preserve_patterns_get(
+            id,
+            crate::api::schema::WorktreePreservePatternsTarget {
+                project_id: params.project_id,
+            },
+        )
+    }
     pub(super) fn handle_project_create(
         &mut self,
         id: String,
@@ -394,9 +464,9 @@ fn normalize_default_agent(value: Option<String>) -> Result<Option<String>, Stri
     crate::project::normalize_agent_provider(&value).map(Some)
 }
 
-fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>, String> {
+fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Option<Vec<String>>, String> {
     let Some(values) = value else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let mut patterns = Vec::new();
     for raw in values {
@@ -408,7 +478,10 @@ fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>
         }
         if pattern.starts_with('/')
             || pattern.contains(':')
-            || pattern.split('/').any(|part| part == "..")
+            || pattern.chars().any(char::is_control)
+            || pattern
+                .split('/')
+                .any(|part| part == ".." || part == ".git")
         {
             return Err(format!(
                 "preserve pattern must be repository-relative: {raw}"
@@ -418,7 +491,7 @@ fn normalize_preserve_patterns(value: Option<Vec<String>>) -> Result<Vec<String>
             patterns.push(pattern.to_owned());
         }
     }
-    Ok(patterns)
+    Ok(Some(patterns))
 }
 fn normalize_lifecycle(
     value: Option<crate::api::schema::ProjectLifecycle>,

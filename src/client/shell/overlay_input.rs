@@ -442,27 +442,64 @@ impl ClientShellState {
             },
         }));
     }
-    pub(super) fn open_project_patterns_overlay(&mut self) {
-        let Some(project) = self.overlay.as_ref().and_then(|overlay| match overlay {
-            ClientShellOverlay::ProjectSettings(settings) => settings.project.clone(),
+    pub(super) fn open_project_patterns_overlay(&mut self, outcome: &mut ClientShellInput) {
+        let Some(project_id) = self.overlay.as_ref().and_then(|overlay| match overlay {
+            ClientShellOverlay::ProjectSettings(settings) => settings
+                .project
+                .as_ref()
+                .map(|project| project.project_id.clone()),
             _ => None,
         }) else {
             return;
         };
+        self.open_preserve_patterns_overlay(Some(project_id), outcome);
+    }
+
+    pub(super) fn open_preserve_patterns_overlay(
+        &mut self,
+        project_id: Option<String>,
+        outcome: &mut ClientShellInput,
+    ) {
+        let endpoint_id = self.active_endpoint_id.clone();
+        let generation = self.next_request_id;
         self.overlay = Some(ClientShellOverlay::ProjectPatterns(
             ClientProjectPatternsOverlay {
-                project_id: project.project_id,
-                name: project.name,
-                root_path: project.root_path,
-                worktree_root: project.worktree_root,
-                worktree_base: project.worktree_base,
-                patterns: project.preserve_patterns,
-                selected: 0,
-                input: TextEditor::default(),
-                editing: false,
+                endpoint_id: endpoint_id.clone(),
+                project_id: project_id.clone(),
+                generation,
+                inherited: false,
+                dirty: false,
+                input: TextEditor::multiline(""),
+                loading: true,
+                saving: false,
+                loaded: false,
                 error: None,
             },
         ));
+        let sent = self.push_endpoint_method_to_endpoint(
+            endpoint_id,
+            crate::api::schema::Method::WorktreePreservePatternsGet(
+                crate::api::schema::WorktreePreservePatternsTarget {
+                    project_id: project_id.clone(),
+                },
+            ),
+            PendingEndpointKind::PreservePatterns {
+                project_id,
+                generation,
+                saving: false,
+            },
+            outcome,
+        );
+        if !sent {
+            if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
+                patterns.loading = false;
+                patterns.error = Some(
+                    "Preserve patterns action unavailable; update the server or reconnect."
+                        .to_owned(),
+                );
+            }
+        }
+        outcome.repaint = true;
     }
 
     pub(super) fn open_project_edit_overlay(&mut self) {
@@ -620,9 +657,14 @@ impl ClientShellState {
                 project.error = None;
                 true
             }
-            Some(ClientShellOverlay::ProjectPatterns(patterns)) if patterns.editing => {
-                patterns.input.insert(text);
-                patterns.error = None;
+            Some(ClientShellOverlay::ProjectPatterns(patterns))
+                if patterns.loaded && !patterns.loading && !patterns.saving =>
+            {
+                if patterns.input.insert(text) {
+                    patterns.inherited = false;
+                    patterns.dirty = true;
+                    patterns.error = None;
+                }
                 true
             }
             Some(ClientShellOverlay::Rename(rename)) => {
@@ -2124,7 +2166,9 @@ impl ClientShellState {
                 KeyCode::Char('a') | KeyCode::Char('A') => {
                     self.open_project_default_agent_overlay()
                 }
-                KeyCode::Char('p') | KeyCode::Char('P') => self.open_project_patterns_overlay(),
+                KeyCode::Char('p') | KeyCode::Char('P') => {
+                    self.open_project_patterns_overlay(outcome)
+                }
                 KeyCode::Enter | KeyCode::Char('r') | KeyCode::Char('R') => {
                     self.open_project_rename_overlay()
                 }
@@ -2213,137 +2257,88 @@ impl ClientShellState {
         key: &crate::input::TerminalKey,
         outcome: &mut ClientShellInput,
     ) {
-        use crossterm::event::KeyCode;
-        let editing = matches!(
-            self.overlay,
-            Some(ClientShellOverlay::ProjectPatterns(
-                ClientProjectPatternsOverlay { editing: true, .. }
-            ))
-        );
-        if editing {
-            match key.code {
-                KeyCode::Esc => {
-                    if let Some(ClientShellOverlay::ProjectPatterns(patterns)) =
-                        self.overlay.as_mut()
-                    {
-                        patterns.editing = false;
-                        patterns.input.clear();
-                        patterns.error = None;
-                    }
-                }
-                KeyCode::Enter => self.commit_project_pattern_edit(),
-                _ => {
-                    if let Some(ClientShellOverlay::ProjectPatterns(patterns)) =
-                        self.overlay.as_mut()
-                    {
-                        patterns.input.handle_key(key);
-                    }
-                }
+        use crossterm::event::{KeyCode, KeyModifiers};
+        if key.code == KeyCode::Esc {
+            self.overlay = None;
+        } else if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('s') {
+            self.submit_project_patterns(outcome);
+        } else if key.modifiers == KeyModifiers::CONTROL && key.code == KeyCode::Char('r') {
+            self.reset_preserve_patterns(outcome);
+        } else if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
+            if patterns.loaded
+                && !patterns.loading
+                && !patterns.saving
+                && patterns.input.handle_key(key) == Some(true)
+            {
+                patterns.inherited = false;
+                patterns.dirty = true;
+                patterns.error = None;
             }
-            outcome.repaint = true;
-            return;
-        }
-
-        match key.code {
-            KeyCode::Esc => self.overlay = None,
-            KeyCode::Up | KeyCode::Char('k') | KeyCode::Char('K') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    patterns.selected = patterns.selected.saturating_sub(1);
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') | KeyCode::Char('J') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    if !patterns.patterns.is_empty() {
-                        patterns.selected =
-                            (patterns.selected + 1).min(patterns.patterns.len() - 1);
-                    }
-                }
-            }
-            KeyCode::Char('a') | KeyCode::Char('A') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    patterns.selected = patterns.patterns.len();
-                    patterns.input.clear();
-                    patterns.editing = true;
-                    patterns.error = None;
-                }
-            }
-            KeyCode::Char('e') | KeyCode::Char('E') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    if let Some(pattern) = patterns.patterns.get(patterns.selected) {
-                        patterns.input = TextEditor::new(pattern, false);
-                        patterns.editing = true;
-                        patterns.error = None;
-                    }
-                }
-            }
-            KeyCode::Char('d') | KeyCode::Char('D') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    if patterns.selected < patterns.patterns.len() {
-                        patterns.patterns.remove(patterns.selected);
-                        patterns.selected = patterns
-                            .selected
-                            .min(patterns.patterns.len().saturating_sub(1));
-                        patterns.error = None;
-                    }
-                }
-            }
-            KeyCode::Char('x') | KeyCode::Char('X') => {
-                if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                    patterns.patterns.clear();
-                    patterns.selected = 0;
-                    patterns.error = None;
-                }
-            }
-            KeyCode::Enter | KeyCode::Char('s') | KeyCode::Char('S') => {
-                self.submit_project_patterns(outcome);
-                return;
-            }
-            _ => {}
         }
         outcome.repaint = true;
-    }
-
-    fn commit_project_pattern_edit(&mut self) {
-        let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() else {
-            return;
-        };
-        let pattern = patterns.input.trim().replace('\\', "/");
-        if pattern.is_empty() {
-            patterns.error = Some("pattern must not be empty".to_owned());
-            return;
-        }
-        if patterns.selected == patterns.patterns.len() {
-            patterns.patterns.push(pattern);
-        } else {
-            patterns.patterns[patterns.selected] = pattern;
-        }
-        patterns.input.clear();
-        patterns.editing = false;
-        patterns.error = None;
     }
 
     pub(super) fn submit_project_patterns(&mut self, outcome: &mut ClientShellInput) {
         let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_ref() else {
             return;
         };
-        let method =
-            crate::api::schema::Method::ProjectUpdate(crate::api::schema::ProjectUpdateParams {
-                project_id: patterns.project_id.clone(),
-                name: patterns.name.clone(),
-                root_path: patterns.root_path.clone(),
-                worktree_root: patterns.worktree_root.clone(),
-                worktree_base: patterns.worktree_base.clone(),
-                default_agent: None,
-                environment: None,
-                preserve_patterns: Some(patterns.patterns.clone()),
-                lifecycle: None,
-            });
-        if !self.push_endpoint_method_with_kind(method, PendingEndpointKind::ProjectUpdate, outcome)
-        {
+        if !patterns.dirty {
+            return;
+        }
+        let values = patterns
+            .input
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
+        self.save_preserve_patterns(Some(values), outcome);
+    }
+
+    pub(super) fn reset_preserve_patterns(&mut self, outcome: &mut ClientShellInput) {
+        self.save_preserve_patterns(None, outcome);
+    }
+
+    fn save_preserve_patterns(
+        &mut self,
+        values: Option<Vec<String>>,
+        outcome: &mut ClientShellInput,
+    ) {
+        let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() else {
+            return;
+        };
+        if !patterns.loaded || patterns.loading || patterns.saving {
+            return;
+        }
+        patterns.saving = true;
+        patterns.error = None;
+        let endpoint_id = patterns.endpoint_id.clone();
+        let project_id = patterns.project_id.clone();
+        let generation = patterns.generation;
+        let sent = self.push_endpoint_method_to_endpoint(
+            endpoint_id,
+            crate::api::schema::Method::WorktreePreservePatternsSet(
+                crate::api::schema::WorktreePreservePatternsSetParams {
+                    project_id: project_id.clone(),
+                    patterns: values,
+                },
+            ),
+            PendingEndpointKind::PreservePatterns {
+                project_id,
+                generation,
+                saving: true,
+            },
+            outcome,
+        );
+        if !sent {
             if let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut() {
-                patterns.error = Some("could not submit project settings".to_owned());
+                patterns.saving = false;
+                patterns.error = Some(
+                    "Preserve patterns action unavailable; settings were not saved.".to_owned(),
+                );
             }
         }
+        outcome.repaint = true;
     }
 
     pub(super) fn save_rename_overlay(&mut self, outcome: &mut ClientShellInput) {

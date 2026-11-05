@@ -5,6 +5,7 @@ pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
     TaskBrowser,
     TmuxPanes,
+    PreservePatterns,
     WhatsNew,
 }
 
@@ -54,6 +55,10 @@ pub(super) fn global_menu_items(
     ));
     items.push(("tasks", ClientGlobalMenuAction::TaskBrowser));
     items.push(("tmux panes", ClientGlobalMenuAction::TmuxPanes));
+    items.push((
+        "preserve patterns (global defaults)",
+        ClientGlobalMenuAction::PreservePatterns,
+    ));
     items
 }
 
@@ -110,6 +115,9 @@ impl ClientShellState {
             ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
             ClientGlobalMenuAction::TaskBrowser => self.open_task_browser(outcome),
             ClientGlobalMenuAction::TmuxPanes => self.open_tmux_panes(outcome),
+            ClientGlobalMenuAction::PreservePatterns => {
+                self.open_preserve_patterns_overlay(None, outcome);
+            }
         }
         outcome.repaint = true;
     }

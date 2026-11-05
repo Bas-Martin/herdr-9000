@@ -1846,6 +1846,54 @@ impl ClientShellState {
             outcome.repaint = true;
             return;
         }
+        if matches!(self.overlay, Some(ClientShellOverlay::ProjectPatterns(_))) {
+            match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if super::contains(self.hits.overlay_cancel, point) {
+                        self.overlay = None;
+                    } else if super::contains(self.hits.overlay_primary, point) {
+                        self.submit_project_patterns(outcome);
+                    } else if super::contains(self.hits.overlay_clear, point) {
+                        self.reset_preserve_patterns(outcome);
+                    } else if super::contains(self.hits.project_patterns, point) {
+                        if let Some(ClientShellOverlay::ProjectPatterns(patterns)) =
+                            self.overlay.as_mut()
+                        {
+                            if patterns.loaded && !patterns.loading && !patterns.saving {
+                                patterns.input.click_multiline(
+                                    self.hits.project_patterns,
+                                    mouse.column,
+                                    mouse.row,
+                                );
+                            }
+                        }
+                    }
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                    if let Some(ClientShellOverlay::ProjectPatterns(patterns)) =
+                        self.overlay.as_mut()
+                    {
+                        if patterns.loaded && !patterns.loading && !patterns.saving {
+                            let code = if mouse.kind == MouseEventKind::ScrollUp {
+                                crossterm::event::KeyCode::Up
+                            } else {
+                                crossterm::event::KeyCode::Down
+                            };
+                            for _ in 0..3 {
+                                patterns.input.handle_key(&crate::input::TerminalKey::new(
+                                    code,
+                                    crossterm::event::KeyModifiers::NONE,
+                                ));
+                            }
+                            outcome.repaint = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if self.overlay.is_some() {
             if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
                 return;
@@ -1863,7 +1911,7 @@ impl ClientShellState {
                 self.open_project_default_agent_overlay();
                 outcome.repaint = true;
             } else if super::contains(self.hits.project_patterns, point) {
-                self.open_project_patterns_overlay();
+                self.open_project_patterns_overlay(outcome);
                 outcome.repaint = true;
             } else if super::contains(self.hits.overlay_primary, point) {
                 match self.overlay.as_ref() {
@@ -1871,9 +1919,6 @@ impl ClientShellState {
                     Some(ClientShellOverlay::ProjectSettings(_)) => {
                         self.open_project_rename_overlay();
                         outcome.repaint = true;
-                    }
-                    Some(ClientShellOverlay::ProjectPatterns(_)) => {
-                        self.submit_project_patterns(outcome);
                     }
                     Some(ClientShellOverlay::ConfirmClose(_)) => {
                         self.accept_close_confirmation(outcome);

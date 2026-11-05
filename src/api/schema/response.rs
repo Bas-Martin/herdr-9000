@@ -397,6 +397,12 @@ pub enum ResponseResult {
         projection_revision: u64,
     },
     Ok {},
+    WorktreePreservePatterns {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project_id: Option<String>,
+        patterns: Vec<String>,
+        inherited: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

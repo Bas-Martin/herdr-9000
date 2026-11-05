@@ -588,6 +588,14 @@ impl ClientShellState {
                     search_focused: true,
                     ..
                 }))
+                | Some(ClientShellOverlay::ProjectPatterns(
+                    ClientProjectPatternsOverlay {
+                        loaded: true,
+                        loading: false,
+                        saving: false,
+                        ..
+                    },
+                ))
                 | Some(ClientShellOverlay::TaskFileEditor(
                     ClientTaskFileEditorOverlay {
                         loading: false,

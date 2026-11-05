@@ -5749,6 +5749,38 @@
           },
           "type": "object"
         },
+        "WorktreePreservePatternsSetParams": {
+          "properties": {
+            "patterns": {
+              "default": null,
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "WorktreePreservePatternsTarget": {
+          "properties": {
+            "project_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
         "WorktreeRemoveParams": {
           "properties": {
             "force": {
@@ -8002,6 +8034,38 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/PluginPaneCloseParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "worktree.preserve_patterns.get",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/WorktreePreservePatternsTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "worktree.preserve_patterns.set",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/WorktreePreservePatternsSetParams"
             }
           },
           "required": [
@@ -13156,6 +13220,35 @@
               },
               "required": [
                 "type"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "inherited": {
+                  "type": "boolean"
+                },
+                "patterns": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "project_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "const": "worktree_preserve_patterns",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "patterns",
+                "inherited"
               ],
               "type": "object"
             }

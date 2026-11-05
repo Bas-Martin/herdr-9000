@@ -201,6 +201,8 @@ operations::define_operations! {
     PluginPaneOpen(PluginPaneOpenParams) => "plugin.pane.open", true, false;
     PluginPaneFocus(PluginPaneFocusParams) => "plugin.pane.focus", true, false;
     PluginPaneClose(PluginPaneCloseParams) => "plugin.pane.close", true, false;
+    WorktreePreservePatternsGet(WorktreePreservePatternsTarget) => "worktree.preserve_patterns.get", false, true;
+    WorktreePreservePatternsSet(WorktreePreservePatternsSetParams) => "worktree.preserve_patterns.set", true, true;
 }
 
 #[cfg(test)]

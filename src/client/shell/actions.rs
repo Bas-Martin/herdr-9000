@@ -969,11 +969,54 @@ impl ClientShellState {
                             project.submitting = false;
                             project.error = Some(error.message);
                         }
-                        Some(ClientShellOverlay::ProjectPatterns(patterns)) => {
-                            patterns.error = Some(error.message);
-                        }
                         _ => {}
                     },
+                }
+                return (true, Vec::new());
+            }
+            PendingEndpointKind::PreservePatterns {
+                project_id,
+                generation,
+                saving,
+            } => {
+                let Some(ClientShellOverlay::ProjectPatterns(patterns)) = self.overlay.as_mut()
+                else {
+                    return (false, Vec::new());
+                };
+                if patterns.project_id != project_id
+                    || patterns.endpoint_id != pending.endpoint_id
+                    || patterns.generation != generation
+                    || if saving {
+                        !patterns.saving
+                    } else {
+                        !patterns.loading
+                    }
+                {
+                    return (false, Vec::new());
+                }
+                patterns.loading = false;
+                patterns.saving = false;
+                match result {
+                    Ok(crate::api::schema::ResponseResult::WorktreePreservePatterns {
+                        project_id: target,
+                        patterns: values,
+                        inherited,
+                    }) if target == project_id => {
+                        patterns.input = TextEditor::multiline(&values.join("\n"));
+                        patterns.inherited = inherited;
+                        patterns.dirty = false;
+                        patterns.loaded = true;
+                        patterns.error = None;
+                    }
+                    Ok(_) => {
+                        patterns.error = Some(
+                            "Unexpected preserve patterns response; settings were not confirmed."
+                                .to_owned(),
+                        );
+                    }
+                    Err(error) => {
+                        patterns.error = Some(error.message);
+                    }
                 }
                 return (true, Vec::new());
             }

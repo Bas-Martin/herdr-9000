@@ -707,7 +707,8 @@ impl ClientShellState {
                 | PendingEndpointKind::TmuxCapture
                 | PendingEndpointKind::TmuxAction
                 | PendingEndpointKind::ProjectCreate
-                | PendingEndpointKind::ProjectUpdate,
+                | PendingEndpointKind::ProjectUpdate
+                | PendingEndpointKind::PreservePatterns { .. },
                 Err(_),
             ) => true,
         }

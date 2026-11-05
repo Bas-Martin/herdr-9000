@@ -247,13 +247,16 @@ impl App {
                 .find(|ws| &ws.id == workspace_id)
                 .and_then(|ws| ws.worktree_space().cloned())
         });
-        let preserve_patterns = params
+        let project = params
             .project_id
             .as_deref()
             .and_then(|project_id| self.state.projects.find(project_id))
-            .or_else(|| self.state.projects.find_by_root(&source.source_repo_root))
-            .map(|project| project.preserve_patterns.clone())
-            .unwrap_or_default();
+            .or_else(|| self.state.projects.find_by_root(&source.source_repo_root));
+        let preserve_patterns = self
+            .state
+            .projects
+            .effective_preserve_patterns(project)
+            .to_vec();
         let api_request = ApiWorktreeAddRequest {
             id,
             operation_id,
@@ -304,6 +307,7 @@ impl App {
                         &source_checkout_path,
                         &finished.path,
                         &preserve_patterns,
+                        params.trust_repository,
                     )
                 });
                 let _ = event_tx.blocking_send(AppEvent::WorktreeAddFinished(Box::new(finished)));

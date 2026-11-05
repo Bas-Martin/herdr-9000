@@ -8,6 +8,7 @@ pub(super) struct TextEditor {
     cursor: usize,
     replace_on_type: bool,
     killed: String,
+    multiline: bool,
 }
 
 impl std::ops::Deref for TextEditor {
@@ -34,6 +35,16 @@ impl TextEditor {
         let mut editor = Self::default();
         editor.insert(text);
         editor.replace_on_type = replace_on_type;
+        editor
+    }
+
+    pub fn multiline(text: &str) -> Self {
+        let mut editor = Self {
+            multiline: true,
+            ..Self::default()
+        };
+        editor.insert(text);
+        editor.cursor = 0;
         editor
     }
 
@@ -75,9 +86,10 @@ impl TextEditor {
                     if chars.peek() == Some(&'\n') {
                         chars.next();
                     }
-                    normalized.push(' ');
+                    normalized.push(if self.multiline { '\n' } else { ' ' });
                 }
-                '\n' | '\t' => normalized.push(' '),
+                '\n' => normalized.push(if self.multiline { '\n' } else { ' ' }),
+                '\t' => normalized.push(' '),
                 ch if !ch.is_control() => normalized.push(ch),
                 _ => {}
             }
@@ -164,7 +176,7 @@ impl TextEditor {
         if key.kind == KeyEventKind::Release {
             return None;
         }
-        if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+        if key.code == KeyCode::Esc || key.code == KeyCode::Enter && !self.multiline {
             return None;
         }
         let previous_len = self.text.len();
@@ -181,15 +193,33 @@ impl TextEditor {
             let ctrl = modifiers == KeyModifiers::CONTROL;
             let alt = modifiers == KeyModifiers::ALT;
             let plain = modifiers.is_empty();
+            let line_start = if self.multiline {
+                self.text[..self.cursor]
+                    .rfind('\n')
+                    .map_or(0, |index| index + 1)
+            } else {
+                0
+            };
+            let line_end = if self.multiline {
+                self.text[self.cursor..]
+                    .find('\n')
+                    .map_or(self.text.len(), |index| self.cursor + index)
+            } else {
+                self.text.len()
+            };
             let movement = match code {
                 KeyCode::Left if plain => Some(self.previous()),
                 KeyCode::Char('b') if ctrl => Some(self.previous()),
                 KeyCode::Right if plain => Some(self.next()),
                 KeyCode::Char('f') if ctrl => Some(self.next()),
-                KeyCode::Home if plain => Some(0),
-                KeyCode::Char('a') if ctrl => Some(0),
-                KeyCode::End if plain => Some(self.text.len()),
-                KeyCode::Char('e') if ctrl => Some(self.text.len()),
+                KeyCode::Home if plain => Some(line_start),
+                KeyCode::Char('a') if ctrl => Some(line_start),
+                KeyCode::End if plain => Some(line_end),
+                KeyCode::Char('e') if ctrl => Some(line_end),
+                KeyCode::Home if ctrl => Some(0),
+                KeyCode::End if ctrl => Some(self.text.len()),
+                KeyCode::Up if plain && self.multiline => Some(self.vertical_position(false)),
+                KeyCode::Down if plain && self.multiline => Some(self.vertical_position(true)),
                 KeyCode::Char('b') if alt => Some(self.word_boundary(true)),
                 KeyCode::Char('f') if alt => Some(self.word_boundary(false)),
                 _ => None,
@@ -199,6 +229,9 @@ impl TextEditor {
                 self.replace_on_type = false;
             } else {
                 match code {
+                    KeyCode::Enter if plain && self.multiline => {
+                        content_changed = self.insert("\n");
+                    }
                     KeyCode::Backspace | KeyCode::Char('h')
                         if code == KeyCode::Backspace && plain
                             || code == KeyCode::Char('h') && ctrl =>
@@ -211,8 +244,8 @@ impl TextEditor {
                     }
                     KeyCode::Delete if plain => self.remove(self.cursor, self.next(), false),
                     KeyCode::Char('d') if ctrl => self.remove(self.cursor, self.next(), false),
-                    KeyCode::Char('u') if ctrl => self.remove(0, self.cursor, true),
-                    KeyCode::Char('k') if ctrl => self.remove(self.cursor, self.text.len(), true),
+                    KeyCode::Char('u') if ctrl => self.remove(line_start, self.cursor, true),
+                    KeyCode::Char('k') if ctrl => self.remove(self.cursor, line_end, true),
                     KeyCode::Char('w') if ctrl => {
                         self.remove(self.word_boundary(true), self.cursor, true)
                     }
@@ -235,6 +268,66 @@ impl TextEditor {
             }
         }
         Some(content_changed || self.text.len() != previous_len)
+    }
+
+    fn vertical_position(&self, down: bool) -> usize {
+        let start = self.text[..self.cursor]
+            .rfind('\n')
+            .map_or(0, |index| index + 1);
+        let column = self.text[start..self.cursor].graphemes(true).count();
+        let target = if down {
+            let Some(end) = self.text[self.cursor..].find('\n') else {
+                return self.cursor;
+            };
+            self.cursor + end + 1
+        } else {
+            if start == 0 {
+                return self.cursor;
+            }
+            self.text[..start - 1]
+                .rfind('\n')
+                .map_or(0, |index| index + 1)
+        };
+        let line = self.text[target..].split('\n').next().unwrap_or_default();
+        target
+            + line
+                .grapheme_indices(true)
+                .nth(column)
+                .map_or(line.len(), |(index, _)| index)
+    }
+
+    fn multiline_scroll(&self, area: ratatui::layout::Rect) -> (usize, usize) {
+        let prefix = &self.text[..self.cursor];
+        let row = prefix.bytes().filter(|byte| *byte == b'\n').count();
+        let column = prefix.rsplit('\n').next().unwrap_or_default().width();
+        (
+            row.saturating_sub(usize::from(area.height.saturating_sub(1))),
+            column.saturating_sub(usize::from(area.width.saturating_sub(1))),
+        )
+    }
+
+    pub fn click_multiline(&mut self, area: ratatui::layout::Rect, x: u16, y: u16) {
+        let (top, left) = self.multiline_scroll(area);
+        let row = top + usize::from(y.saturating_sub(area.y));
+        let column = left + usize::from(x.saturating_sub(area.x));
+        let mut start = 0;
+        for (index, line) in self.text.split('\n').enumerate() {
+            if index == row {
+                let mut cells = 0;
+                self.cursor = start + line.len();
+                for (offset, grapheme) in line.grapheme_indices(true) {
+                    if cells + grapheme.width() > column {
+                        self.cursor = start + offset;
+                        break;
+                    }
+                    cells += grapheme.width();
+                }
+                self.replace_on_type = false;
+                return;
+            }
+            start += line.len() + 1;
+        }
+        self.cursor = self.text.len();
     }
 
     pub fn viewport(&self, width: u16) -> (&str, u16) {
@@ -273,6 +366,43 @@ pub(super) fn render(
     let area = area.intersection(buffer.area);
     if area.is_empty() {
         return None;
+    }
+    if editor.multiline {
+        let (top, left) = editor.multiline_scroll(area);
+        buffer.set_style(area, style);
+        for (row, line) in editor
+            .text
+            .split('\n')
+            .skip(top)
+            .take(usize::from(area.height))
+            .enumerate()
+        {
+            let mut cells = 0;
+            for grapheme in line.graphemes(true) {
+                let width = grapheme.width();
+                if cells >= left {
+                    let x = usize::from(area.x) + cells - left;
+                    if x + width > usize::from(area.right()) {
+                        break;
+                    }
+                    buffer.set_stringn(x as u16, area.y + row as u16, grapheme, width, style);
+                }
+                cells += width;
+            }
+        }
+        let prefix = &editor.text[..editor.cursor];
+        return Some(crate::protocol::CursorState {
+            x: area.x
+                + prefix
+                    .rsplit('\n')
+                    .next()
+                    .unwrap_or_default()
+                    .width()
+                    .saturating_sub(left) as u16,
+            y: area.y + (prefix.bytes().filter(|byte| *byte == b'\n').count() - top) as u16,
+            visible: true,
+            shape: 0,
+        });
     }
     let (text, cursor) = editor.viewport(area.width);
     for x in area.x..area.right() {

@@ -814,7 +814,7 @@ fn render_project_settings_overlay(
             i.y.saturating_add(7),
             i.width,
             &format!(
-                "preserve [project]: {} pattern(s)",
+                "preserve: {} effective pattern(s) [p to edit]",
                 project.preserve_patterns.len()
             ),
             Style::default().fg(p.text).bg(p.panel_bg),
@@ -878,98 +878,110 @@ fn render_project_patterns_overlay(
     v: &ClientProjectPatternsOverlay,
     p: &Palette,
 ) -> Option<OverlayRender> {
-    let q = popup(b.area, 78, 18)?;
+    let q = popup(b.area, 86, 24)?;
     let i = panel(b, q, p.accent, p.panel_bg)?;
+    let base = Style::default().fg(p.text).bg(p.panel_bg);
     put_text(
         b,
         i.x,
         i.y,
         i.width,
-        "preserve patterns",
-        Style::default()
-            .fg(p.text)
-            .bg(p.panel_bg)
-            .add_modifier(Modifier::BOLD),
+        "Preserve patterns — one glob per line",
+        base.add_modifier(Modifier::BOLD),
     );
+    let count = v
+        .input
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    let source = if v.project_id.is_none() {
+        "global defaults"
+    } else if v.inherited {
+        "global defaults (inherited)"
+    } else {
+        "project override"
+    };
     put_text(
         b,
         i.x,
         i.y.saturating_add(1),
         i.width,
-        "Repository-relative globs; only ignored or untracked files are copied.",
-        Style::default().fg(p.overlay0).bg(p.panel_bg),
+        &if v.loading {
+            "Loading settings…".to_owned()
+        } else if !v.loaded {
+            "Settings unavailable".to_owned()
+        } else {
+            format!(
+                "{source}{} — {count} pattern(s); 0 disables copying",
+                if v.dirty { " (unsaved)" } else { "" }
+            )
+        },
+        base.fg(p.accent),
     );
-    let list_height = usize::from(i.height.saturating_sub(8));
-    if v.patterns.is_empty() {
-        put_text(
-            b,
-            i.x,
-            i.y.saturating_add(3),
-            i.width,
-            "(none)",
-            Style::default().fg(p.overlay0).bg(p.panel_bg),
-        );
-    } else {
-        let first = v
-            .selected
-            .saturating_sub(list_height.saturating_sub(1))
-            .min(v.patterns.len().saturating_sub(1));
-        for (row_index, pattern) in v.patterns.iter().enumerate().skip(first).take(list_height) {
-            let marker = if row_index == v.selected { ">" } else { " " };
-            put_text(
-                b,
-                i.x,
-                i.y.saturating_add(3 + u16::try_from(row_index - first).unwrap_or(u16::MAX)),
-                i.width,
-                &format!("{marker} {pattern}"),
-                Style::default().fg(p.text).bg(p.panel_bg),
-            );
-        }
-    }
-    let cursor = if v.editing {
-        let input = Rect::new(i.x, i.bottom().saturating_sub(6), i.width, 1);
-        let style = Style::default().fg(p.text).bg(p.surface0);
-        b.set_style(input, style);
-        text_editor::render(
-            b,
-            Rect::new(input.x + 1, input.y, input.width.saturating_sub(1), 1),
-            &v.input,
-            style,
-        )
+    put_text(
+        b,
+        i.x,
+        i.y.saturating_add(2),
+        i.width,
+        "Repository-relative globs; only ignored or untracked files are copied.",
+        base.fg(p.overlay0),
+    );
+    let input = Rect::new(
+        i.x,
+        i.y.saturating_add(4),
+        i.width,
+        i.height.saturating_sub(9),
+    );
+    b.set_style(input, base.bg(p.surface0));
+    let cursor = if v.loaded && !v.loading && !v.saving {
+        text_editor::render(b, input, &v.input, base.bg(p.surface0))
     } else {
         None
     };
+    put_text(
+        b,
+        i.x,
+        i.bottom().saturating_sub(4),
+        i.width,
+        if v.saving {
+            "Saving…"
+        } else {
+            "Enter newline · arrows/Home/End move · Ctrl+S save · Ctrl+R reset"
+        },
+        base.fg(p.overlay0),
+    );
     if let Some(error) = v.error.as_deref() {
         put_text(
             b,
             i.x,
-            i.bottom().saturating_sub(5),
+            i.bottom().saturating_sub(3),
             i.width,
             error,
-            Style::default().fg(p.red).bg(p.panel_bg),
-        );
-    } else {
-        put_text(
-            b,
-            i.x,
-            i.bottom().saturating_sub(5),
-            i.width,
-            "j/k select   a add   e edit   d delete   x clear",
-            Style::default().fg(p.overlay0).bg(p.panel_bg),
+            base.fg(p.red),
         );
     }
-    let rs = row(i, &[8, 8, 10, 12], 2, i.height.saturating_sub(2));
-    let [add, edit, save, cancel] = rs.as_slice() else {
+    let rs = row(i, &[18, 24, 13], 2, i.height.saturating_sub(2));
+    let [save, reset, cancel] = rs.as_slice() else {
         return None;
     };
-    let button_style = Style::default().fg(p.text).bg(p.surface0);
-    button(b, *add, " a add ", button_style);
-    button(b, *edit, " e edit ", button_style);
-    button(b, *save, " s save ", button_style);
-    button(b, *cancel, " esc close ", button_style);
+    let button_style = base.bg(p.surface0);
+    button(b, *save, " Ctrl+S save ", button_style);
+    button(
+        b,
+        *reset,
+        if v.project_id.is_some() {
+            " Ctrl+R use global "
+        } else {
+            " Ctrl+R built-in "
+        },
+        button_style,
+    );
+    button(b, *cancel, " Esc close ", button_style);
     Some(OverlayRender {
         primary: *save,
+        clear: *reset,
         cancel: *cancel,
+        project_patterns: input,
         cursor,
         ..OverlayRender::default()
     })

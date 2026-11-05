@@ -110,6 +110,40 @@ worktree アクションは Git ワークスペースの行から使えます。
 
 worktree チェックアウトの削除は明示的に行います。グループ化された子ワークスペースで `Delete worktree checkout...` を使うと `git worktree remove` が実行されます。Herdr はまず Git に安全な削除を要求します。チェックアウトに変更済みまたは未追跡のファイルがあり Git が拒否した場合、Herdr は強制削除を実行する前にもう一度確認します。ブランチは削除されません。
 
+### 新しい worktree にローカルファイルを引き継ぐ
+
+worktree を作成するとき、Herdr はリポジトリのメインチェックアウトから、パターンに一致する Git の無視対象または未追跡のローカルファイルを、相対パスを保ったまま新しいチェックアウトへコピーします。コピー先で追跡されているファイルは上書きしません。一致するファイルがなくても問題ありません。チェックアウトの境界外へ出るシンボリックリンクはたどりません。
+
+組み込みのグローバル保持パターンは次のとおりです:
+
+```text
+.env
+.env.keys
+.env.local
+.env.*.local
+.envrc
+docker-compose.override.yml
+**/appsettings.Local.json
+**/local.settings.json
+**/cypress.env.json
+```
+
+保持パターンの設定では、複数行フィールドに 1 行につき 1 つの glob を入力して、グローバルデフォルトやプロジェクトのパターンを編集できます。プロジェクトは、上書き設定がなければグローバルデフォルトを継承します。上書き設定はリストへの追加ではなく、リスト全体を置き換えます。明示的に空の上書き設定を指定すると、そのプロジェクトへのコピーを無効にします。プロジェクトを継承にリセットすると、現在のグローバルデフォルトを再び使います。
+
+これらの設定は `config.toml` ではなく `projects.json` に保存されます。`default_preserve_patterns` がグローバルリストを、各プロジェクトの `preserve_patterns` が上書き設定を保持します。プロジェクトのフィールドがない場合は継承、`[]` の場合はコピー無効です。
+
+JSON API では、`project_id` の省略はグローバル設定を、プロジェクト ID の指定はそのプロジェクトの設定を選択します:
+
+```json
+{"id":"preserve-1","method":"worktree.preserve_patterns.get","params":{}}
+{"id":"preserve-2","method":"worktree.preserve_patterns.set","params":{"patterns":[".env","**/local.settings.json"]}}
+{"id":"preserve-3","method":"worktree.preserve_patterns.get","params":{"project_id":"PROJECT_ID"}}
+{"id":"preserve-4","method":"worktree.preserve_patterns.set","params":{"project_id":"PROJECT_ID","patterns":[]}}
+{"id":"preserve-5","method":"worktree.preserve_patterns.set","params":{"project_id":"PROJECT_ID","patterns":null}}
+```
+
+どちらのメソッドも有効な `patterns` と `inherited`（プロジェクトがグローバルデフォルトを継承している場合のみ true）を返し、プロジェクト設定の場合は `project_id` も返します。グローバル設定の `patterns` を `null` にすると、組み込みリストに戻ります。これらのメソッドを公開しているサーバーが必要です。
+
 ## リモートアタッチ
 
 リモートアタッチは、デフォルトで一時的なキープアライブと、対応する環境では接続再利用を使って SSH 接続を管理します。

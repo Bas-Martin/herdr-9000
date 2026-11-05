@@ -186,51 +186,82 @@ pub(crate) fn preserve_ignored_files(
     source_repo_root: &Path,
     destination: &Path,
     patterns: &[String],
+    trust_repository: bool,
 ) -> Result<(), String> {
     if patterns.is_empty() {
         return Ok(());
     }
-    let tracked: HashSet<String> = git_file_paths(source_repo_root, &["ls-files"])?
+    let worktrees = list_existing_worktrees(source_repo_root, trust_repository)?;
+    let main = worktrees
+        .first()
+        .filter(|worktree| !worktree.is_bare)
+        .ok_or("main repository working directory is unavailable")?;
+    let source_repo_root = std::fs::canonicalize(&main.path)
+        .map_err(|err| format!("failed to resolve main repository: {err}"))?;
+    let destination = std::fs::canonicalize(destination)
+        .map_err(|err| format!("failed to resolve destination worktree: {err}"))?;
+    let tracked: HashSet<String> = git_file_paths(&destination, &["ls-files"], trust_repository)?
         .iter()
         .map(|path| normalize_repo_relative_path(path))
         .collect();
-    let mut candidates = git_file_paths(
-        source_repo_root,
-        &["ls-files", "--others", "--exclude-standard"],
+    let candidates = git_file_paths(
+        &source_repo_root,
+        &["ls-files", "--others"],
+        trust_repository,
     )?;
-    candidates.extend(git_file_paths(
-        source_repo_root,
-        &["ls-files", "--others", "--ignored", "--exclude-standard"],
-    )?);
-    let mut copied = HashSet::new();
     for candidate in candidates {
-        let source = source_repo_root.join(&candidate);
         let relative = normalize_repo_relative_path(&candidate);
         if relative.is_empty()
+            || relative.starts_with('/')
             || relative
                 .split('/')
                 .any(|component| component == ".git" || component == "..")
-            || !copied.insert(relative.clone())
+            || !candidate
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)))
             || tracked.contains(&relative)
+            || relative
+                .match_indices('/')
+                .any(|(index, _)| tracked.contains(&relative[..index]))
+            || !matches_preserve_pattern(&relative, patterns)
         {
             continue;
         }
-        let metadata = std::fs::symlink_metadata(&source)
-            .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-        if metadata.file_type().is_symlink() {
+        let source = source_repo_root.join(candidate);
+        let metadata = match std::fs::symlink_metadata(&source) {
+            Ok(metadata) => metadata,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(format!(
+                    "failed to inspect preserved path {relative}: {err}"
+                ))
+            }
+        };
+        if !metadata.is_file() {
             continue;
         }
-        if metadata.is_dir() {
-            copy_preserved_directory(&source, destination, &relative, patterns, &tracked)?;
-        } else if metadata.is_file() && matches_preserve_pattern(&relative, patterns) {
-            copy_preserved_file(&source, destination, &relative)?;
+        let source = match std::fs::canonicalize(&source) {
+            Ok(source) => source,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => {
+                return Err(format!(
+                    "failed to resolve preserved path {relative}: {err}"
+                ))
+            }
+        };
+        if source.starts_with(&source_repo_root) {
+            copy_preserved_file(&source, &destination, &relative)?;
         }
     }
     Ok(())
 }
 
-fn git_file_paths(repo_root: &Path, args: &[&str]) -> Result<Vec<PathBuf>, String> {
-    let mut command = repository_git_command(repo_root, false);
+fn git_file_paths(
+    repo_root: &Path,
+    args: &[&str],
+    trust_repository: bool,
+) -> Result<Vec<PathBuf>, String> {
+    let mut command = repository_git_command(repo_root, trust_repository);
     command.args(args).arg("-z");
     let output = command
         .output()
@@ -253,50 +284,56 @@ fn normalize_repo_relative_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn copy_preserved_directory(
-    source: &Path,
-    destination: &Path,
-    relative: &str,
-    patterns: &[String],
-    tracked: &HashSet<String>,
-) -> Result<(), String> {
-    let entries = std::fs::read_dir(source)
-        .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?;
-        let entry_path = entry.path();
-        let entry_relative = format!("{relative}/{}", entry.file_name().to_string_lossy());
-        if entry_relative
-            .split('/')
-            .any(|component| component == ".git" || component == "..")
-        {
-            continue;
-        }
-        let metadata = std::fs::symlink_metadata(&entry_path)
-            .map_err(|err| format!("failed to inspect preserved path {entry_relative}: {err}"))?;
-        if metadata.file_type().is_symlink() {
-            continue;
-        }
-        if metadata.is_dir() {
-            copy_preserved_directory(&entry_path, destination, &entry_relative, patterns, tracked)?;
-        } else if metadata.is_file()
-            && !tracked.contains(&entry_relative)
-            && matches_preserve_pattern(&entry_relative, patterns)
-        {
-            copy_preserved_file(&entry_path, destination, &entry_relative)?;
-        }
-    }
-    Ok(())
-}
-
 fn copy_preserved_file(source: &Path, destination: &Path, relative: &str) -> Result<(), String> {
-    let target = destination.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
+    let relative_path = Path::new(relative);
+    if let Some(relative_parent) = relative_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        let mut parent = destination.to_path_buf();
+        for component in relative_parent.components() {
+            parent.push(component);
+            let metadata = match std::fs::symlink_metadata(&parent) {
+                Ok(metadata) => metadata,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    match std::fs::create_dir(&parent) {
+                        Ok(()) => continue,
+                        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                            std::fs::symlink_metadata(&parent)
+                                .map_err(|err| format!("failed to inspect {relative}: {err}"))?
+                        }
+                        Err(err) => return Err(format!("failed to preserve {relative}: {err}")),
+                    }
+                }
+                Err(err) => return Err(format!("failed to inspect {relative}: {err}")),
+            };
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Ok(());
+            }
+        }
     }
-    std::fs::copy(source, &target)
+    let target = destination.join(relative_path);
+    let mut source = match std::fs::File::open(source) {
+        Ok(source) => source,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("failed to read preserved path {relative}: {err}")),
+    };
+    let permissions = source
+        .metadata()
+        .map_err(|err| format!("failed to inspect preserved path {relative}: {err}"))?
+        .permissions();
+    let mut target = match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
+    {
+        Ok(target) => target,
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
+        Err(err) => return Err(format!("failed to preserve {relative}: {err}")),
+    };
+    target
+        .set_permissions(permissions)
+        .and_then(|()| std::io::copy(&mut source, &mut target))
         .map_err(|err| format!("failed to preserve {relative}: {err}"))?;
     Ok(())
 }

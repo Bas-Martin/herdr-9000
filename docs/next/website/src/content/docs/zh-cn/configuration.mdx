@@ -110,6 +110,40 @@ Git 工作区行提供 worktree 操作。`New worktree` 会创建检出：如果
 
 删除 worktree 检出需要显式操作。在归组的子工作区上使用 `Delete worktree checkout...` 来运行 `git worktree remove`。Herdr 会先请求 Git 安全删除。如果 Git 因检出中存在已修改或未跟踪的文件而拒绝，Herdr 会在强制删除前再次确认。分支不会被删除。
 
+### 在新 worktree 中保留本地文件
+
+创建 worktree 时，Herdr 会将仓库主检出中匹配模式、被 Git 忽略或未跟踪的本地文件复制到新检出，并保留相对路径。不会覆盖目标中已被跟踪的文件。没有匹配项也没有问题；不会跟随指向检出边界之外的符号链接。
+
+内置的全局保留模式如下：
+
+```text
+.env
+.env.keys
+.env.local
+.env.*.local
+.envrc
+docker-compose.override.yml
+**/appsettings.Local.json
+**/local.settings.json
+**/cypress.env.json
+```
+
+在保留模式设置中，可通过多行字段编辑全局默认值或项目模式，每行填写一个 glob。项目默认继承全局设置，除非设置了项目覆盖。覆盖会替换整个列表，而不是追加模式；显式设置空覆盖会禁用该项目的文件复制。将项目重置为继承后，它会重新使用当前的全局默认值。
+
+这些设置保存在 `projects.json` 中，而不是 `config.toml`：`default_preserve_patterns` 保存全局列表，各项目的 `preserve_patterns` 保存覆盖列表。项目字段缺失表示继承，`[]` 表示禁用复制。
+
+JSON API 中，省略 `project_id` 表示全局设置，指定项目 ID 则表示该项目的设置：
+
+```json
+{"id":"preserve-1","method":"worktree.preserve_patterns.get","params":{}}
+{"id":"preserve-2","method":"worktree.preserve_patterns.set","params":{"patterns":[".env","**/local.settings.json"]}}
+{"id":"preserve-3","method":"worktree.preserve_patterns.get","params":{"project_id":"PROJECT_ID"}}
+{"id":"preserve-4","method":"worktree.preserve_patterns.set","params":{"project_id":"PROJECT_ID","patterns":[]}}
+{"id":"preserve-5","method":"worktree.preserve_patterns.set","params":{"project_id":"PROJECT_ID","patterns":null}}
+```
+
+两个方法都返回实际生效的 `patterns` 和 `inherited`（仅当项目继承全局默认值时为 true），项目设置还会返回 `project_id`。将全局设置的 `patterns` 设为 `null` 可恢复内置列表。这些方法要求服务器声明支持它们。
+
 ## 远程连接
 
 远程连接默认使用临时保活设置，并在支持时复用连接，以管理 SSH 连接。
