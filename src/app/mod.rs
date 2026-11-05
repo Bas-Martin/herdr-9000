@@ -980,7 +980,14 @@ impl App {
                 config.experimental.cjk_ime_cursor_shape.to_decscusr();
             self.persist_pane_history = config.experimental.pane_history;
             if !self.persist_pane_history {
-                crate::persist::clear_history();
+                let result = self
+                    .session_writer
+                    .lock()
+                    .map_err(|err| format!("session writer is poisoned: {err}"))
+                    .and_then(|mut writer| writer.clear_history().map_err(|err| err.to_string()));
+                if let Err(err) = result {
+                    diagnostics.push(format!("could not clear pane history: {err}"));
+                }
             }
         }
 

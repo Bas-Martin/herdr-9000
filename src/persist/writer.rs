@@ -34,6 +34,11 @@ impl SessionWriter {
         Ok(())
     }
 
+    pub(crate) fn clear_history(&mut self) -> io::Result<()> {
+        self.preserve_unloaded()?;
+        super::io::clear_path(&self.path.with_file_name("session-history.json"))
+    }
+
     fn preserve_snapshot_history(&self) {
         if let Err(err) = preserve_snapshot_history(&self.path) {
             tracing::warn!(

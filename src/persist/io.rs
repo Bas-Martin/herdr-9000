@@ -87,13 +87,6 @@ pub(super) fn clear_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
-pub fn clear_history() {
-    let path = session_history_path();
-    if let Err(err) = clear_path(&path) {
-        crate::logging::session_clear_failed(&path, &err.to_string());
-    }
-}
-
 pub fn load() -> Option<SessionSnapshot> {
     let path = session_path();
     let content = match std::fs::read_to_string(&path) {

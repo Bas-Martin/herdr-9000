@@ -14,7 +14,7 @@ mod snapshot;
 mod tasks;
 mod writer;
 
-pub use self::io::{clear_history, load, load_history};
+pub use self::io::{load, load_history};
 
 pub(crate) use self::automations::{load as load_automations, save as save_automations};
 pub(crate) use self::projects::{load as load_projects, save as save_projects};
