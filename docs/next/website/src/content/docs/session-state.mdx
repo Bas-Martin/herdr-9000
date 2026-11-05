@@ -38,7 +38,9 @@ When saving, Herdr prefers the live shell's directory where the operating system
 
 If `session.json` cannot be read or parsed, or requires a newer Herdr version, Herdr logs why loading failed. Before saving or clearing the replacement session, it preserves the original bytes in `session-backups/` beside `session.json` and logs the recovery path as `persist.backup`. A file missing at startup is checked again before the first save or clear. These failed-load recovery copies are separate from normal snapshot history.
 
-Herdr retains the three most recent recovery copies, pruning older copies only after a new copy is safely written. If preservation fails, autosave and shutdown leave the original untouched and log the failure; preservation is retried on the next save request. Copies are never restored automatically. To recover one, stop the affected server, copy the recovery file over its `session.json`, then restart. Recovery copies do not include pane screen history.
+Herdr retains the three most recent recovery copies, pruning older copies only after a new copy is safely written. If preservation fails, autosave and shutdown leave the originals untouched and log the failure; preservation is retried on the next save request. Existing pane screen history is preserved separately in `session-history-backups/`, also retaining three copies. Copies are never restored automatically. To recover, stop the affected server and restore the matching `session.json` and `session-history.json` recovery files before restarting.
+
+Before upgrading or rolling back, back up the configuration and session directories, including `projects.json`, `session.json`, and `session-history.json` when present. Stop writing servers before restoring those files. A named `--session` separates session state but still shares the project registry; use a separate `XDG_CONFIG_HOME` for an isolated preview. Older binaries can discard newer project settings when saving the registry. For custom fork builds, install the fork's binary: the built-in updater downloads upstream releases.
 
 ## Shutdown and snapshot recovery
 
@@ -68,7 +70,7 @@ pane_history = true
 
 When enabled, Herdr stores saved pane history in `session-history.json` next to `session.json`. Treat the Herdr config/session directory like terminal history.
 
-History is replayed only when it matches the exact saved layout. History from a different layout, including after manual snapshot recovery, is ignored. Older history files without layout verification are also ignored; newly saved history can be replayed on the next restart.
+History with a layout fingerprint is replayed only when that fingerprint matches the saved layout; a mismatched fingerprint is never accepted through a fallback. Legacy history without a fingerprint is migrated only when its version, workspace and tab counts, and pane IDs match the saved layout. Before replacing either legacy file, Herdr preserves the original layout and history in the recovery directories described above. Newly saved history includes a fingerprint.
 
 ## Native agent session restore
 

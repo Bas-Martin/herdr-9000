@@ -862,6 +862,7 @@ fn render_project_settings_overlay(
             )
         };
     Some(OverlayRender {
+        area: q,
         primary,
         project_edit,
         project_rename,
@@ -978,6 +979,7 @@ fn render_project_patterns_overlay(
     );
     button(b, *cancel, " Esc close ", button_style);
     Some(OverlayRender {
+        area: q,
         primary: *save,
         clear: *reset,
         cancel: *cancel,
@@ -1049,9 +1051,11 @@ fn render_project_create_overlay(
             &v.worktree_root,
         ),
     ] {
-        let style = Style::default()
-            .fg(p.text)
-            .bg(if v.field == field { p.surface1 } else { p.surface0 });
+        let style = Style::default().fg(p.text).bg(if v.field == field {
+            p.surface1
+        } else {
+            p.surface0
+        });
         b.set_style(input, style);
         let field_cursor = text_editor::render(
             b,
@@ -1118,6 +1122,7 @@ fn render_project_create_overlay(
         Style::default().fg(p.text).bg(p.surface0),
     );
     Some(OverlayRender {
+        area: q,
         primary: *save,
         cancel: *cancel,
         project_name: name_input,

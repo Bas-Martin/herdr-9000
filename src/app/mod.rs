@@ -405,6 +405,9 @@ impl App {
         let mut restored_terminals = std::collections::HashMap::new();
         let mut restored_terminal_runtimes = crate::terminal::TerminalRuntimeRegistry::new();
         let snapshot = policy.restore_session.then(crate::persist::load).flatten();
+        let history = (policy.restore_session && config.experimental.pane_history)
+            .then(crate::persist::load_history)
+            .flatten();
         let mut plugin_installation_leases = crate::plugin_installations::Leases::new();
         let mut plugin_installation_cleanup_allowed = true;
         if policy.persist_plugin_registry {
@@ -423,14 +426,13 @@ impl App {
             );
         }
         let session_writer = Arc::new(std::sync::Mutex::new(crate::persist::SessionWriter::new(
-            policy.restore_session && snapshot.is_none(),
+            policy.restore_session
+                && (snapshot.is_none()
+                    || history
+                        .as_ref()
+                        .is_some_and(|history| history.layout_fingerprint.is_none())),
         )));
         let (workspaces, active, selected) = if let Some(snap) = snapshot {
-            let history = config
-                .experimental
-                .pane_history
-                .then(crate::persist::load_history)
-                .flatten();
             let (ws, terminals, terminal_runtimes) = crate::persist::restore(
                 &snap,
                 history.as_ref(),

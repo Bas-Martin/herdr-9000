@@ -325,8 +325,10 @@ impl ClientShellState {
             return;
         };
         if !create.branch_overridden {
-            create.branch =
-                TextEditor::new(&crate::worktree::branch_name_for_task(&create.task_name), false);
+            create.branch = TextEditor::new(
+                &crate::worktree::branch_name_for_task(&create.task_name),
+                false,
+            );
         }
         create.checkout_path = checkout_path_preview(
             &create.worktree_directory,
@@ -540,7 +542,9 @@ impl ClientShellState {
                     .into_iter()
                     .find(|project| project.project_id == project_id)
                 else {
-                    self.set_endpoint_error("Project settings for this worktree could not be found.");
+                    self.set_endpoint_error(
+                        "Project settings for this worktree could not be found.",
+                    );
                     return true;
                 };
                 self.open_worktree_create_overlay(

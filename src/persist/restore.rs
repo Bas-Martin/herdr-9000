@@ -269,8 +269,29 @@ fn restore_with_imports_and_failures(
     render_dirty: Arc<RenderSignal>,
 ) -> RestoreFailures<RestoredSession> {
     let history = history.filter(|history| {
-        let matches = history.layout_fingerprint.is_some()
-            && history.layout_fingerprint == super::snapshot::layout_fingerprint(snapshot);
+        let matches = match history.layout_fingerprint.as_ref() {
+            Some(fingerprint) => {
+                super::snapshot::layout_fingerprint(snapshot).as_ref() == Some(fingerprint)
+            }
+            None => {
+                history.version == snapshot.version
+                    && history.workspaces.len() == snapshot.workspaces.len()
+                    && history.workspaces.iter().zip(&snapshot.workspaces).all(
+                        |(history_workspace, workspace)| {
+                            history_workspace.tabs.len() == workspace.tabs.len()
+                                && history_workspace.tabs.iter().zip(&workspace.tabs).all(
+                                    |(history_tab, tab)| {
+                                        history_tab.panes.len() == tab.panes.len()
+                                            && history_tab
+                                                .panes
+                                                .keys()
+                                                .all(|id| tab.panes.contains_key(id))
+                                    },
+                                )
+                        },
+                    )
+            }
+        };
         if !matches {
             tracing::warn!("Ignoring pane history without a matching session layout");
         }

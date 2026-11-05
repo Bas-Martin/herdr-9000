@@ -27,13 +27,14 @@ pub(super) fn render_worktree_create_overlay(
         Style::default().fg(p.overlay0).bg(p.panel_bg),
     );
     let task_name_input = Rect::new(inner.x, inner.y + 3, inner.width, 1);
-    let task_name_style = Style::default()
-        .fg(p.text)
-        .bg(if create.field == ClientWorktreeCreateField::TaskName {
-            p.surface1
-        } else {
-            p.surface0
-        });
+    let task_name_style =
+        Style::default()
+            .fg(p.text)
+            .bg(if create.field == ClientWorktreeCreateField::TaskName {
+                p.surface1
+            } else {
+                p.surface0
+            });
     b.set_style(task_name_input, task_name_style);
     let task_name_cursor = text_editor::render(
         b,
@@ -55,13 +56,14 @@ pub(super) fn render_worktree_create_overlay(
         Style::default().fg(p.overlay0).bg(p.panel_bg),
     );
     let branch_input = Rect::new(inner.x, inner.y + 6, inner.width, 1);
-    let branch_style = Style::default()
-        .fg(p.text)
-        .bg(if create.field == ClientWorktreeCreateField::Branch {
-            p.surface1
-        } else {
-            p.surface0
-        });
+    let branch_style =
+        Style::default()
+            .fg(p.text)
+            .bg(if create.field == ClientWorktreeCreateField::Branch {
+                p.surface1
+            } else {
+                p.surface0
+            });
     b.set_style(branch_input, branch_style);
     let branch_cursor = text_editor::render(
         b,

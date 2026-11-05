@@ -2,10 +2,10 @@ use crate::api::schema::{
     AutomationCreateParams, AutomationListParams, AutomationRunNowParams, AutomationTarget,
     AutomationUpdateParams, EmptyParams, GitHubIssueSearchParams, GitHubIssueTaskCreateParams,
     Method, ProjectCreateParams, ProjectOpenParams, ProjectRenameParams, ProjectTarget, Request,
-    ResourceCreateParams, ResourceListParams, ResourceTarget, ResourceUpdateParams, TaskChecksParams,
-    TaskCreateParams, TaskDiffParams, TaskFileReadParams, TaskFileWriteParams, TaskGitActionParams,
-    TaskListParams, TaskOpenParams, TaskRenameParams, TaskResourcesParams, TaskTarget,
-    TmuxAgentStartParams, TmuxPaneSendKeysParams, TmuxPaneTarget,
+    ResourceCreateParams, ResourceListParams, ResourceTarget, ResourceUpdateParams,
+    TaskChecksParams, TaskCreateParams, TaskDiffParams, TaskFileReadParams, TaskFileWriteParams,
+    TaskGitActionParams, TaskListParams, TaskOpenParams, TaskRenameParams, TaskResourcesParams,
+    TaskTarget, TmuxAgentStartParams, TmuxPaneSendKeysParams, TmuxPaneTarget,
 };
 
 fn print_method_response(id: &'static str, method: Method) -> std::io::Result<i32> {

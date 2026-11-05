@@ -310,7 +310,9 @@ pub(crate) fn from_matches(matches: &ArgMatches) -> Result<Operation, ParseError
                 Operation::StartTmux(TmuxAgentStartParams {
                     name: params.name,
                     kind: params.kind,
-                    target: matches.get_one::<String>("target").cloned()
+                    target: matches
+                        .get_one::<String>("target")
+                        .cloned()
                         .or_else(|| (!params.pane_id.is_empty()).then_some(params.pane_id)),
                     cwd: matches.get_one::<String>("cwd").cloned(),
                     args: params.args,

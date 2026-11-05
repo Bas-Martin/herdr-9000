@@ -20,8 +20,16 @@ impl SessionWriter {
     }
 
     fn preserve_unloaded(&mut self) -> io::Result<()> {
-        if self.protect_unloaded && preserve_existing(&self.path)? {
-            self.protect_unloaded = false;
+        if self.protect_unloaded {
+            let layout_preserved = preserve_existing(&self.path)?;
+            preserve_existing_in(
+                &self.path.with_file_name("session-history.json"),
+                "session-history-backups",
+                3,
+            )?;
+            if layout_preserved {
+                self.protect_unloaded = false;
+            }
         }
         Ok(())
     }

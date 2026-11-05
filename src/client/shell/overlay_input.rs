@@ -413,7 +413,10 @@ impl ClientShellState {
         self.overlay = Some(ClientShellOverlay::Rename(ClientRenameOverlay {
             title: "worktree base",
             input: TextEditor::new(
-                project.worktree_base.as_deref().unwrap_or(crate::project::DEFAULT_WORKTREE_BASE),
+                project
+                    .worktree_base
+                    .as_deref()
+                    .unwrap_or(crate::project::DEFAULT_WORKTREE_BASE),
                 false,
             ),
             target: ClientRenameTarget::ProjectBase {

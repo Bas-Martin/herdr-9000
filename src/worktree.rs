@@ -342,9 +342,7 @@ fn matches_preserve_pattern(relative: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|pattern| {
         glob_matches(pattern, relative)
             || (!pattern.contains('/')
-                && relative
-                    .split('/')
-                    .any(|component| glob_matches(pattern, component)))
+                && glob_matches(pattern, relative.rsplit('/').next().unwrap_or(relative)))
     })
 }
 
@@ -712,8 +710,8 @@ pub(crate) fn parse_worktree_list_porcelain(output: &str) -> Vec<ExistingWorktre
         *is_prunable = false;
     };
 
-    for line in output.lines() {
-        if line.trim().is_empty() {
+    for line in output.split('\0') {
+        if line.is_empty() {
             finish(
                 &mut entries,
                 &mut path,
@@ -760,7 +758,7 @@ pub(crate) fn list_existing_worktrees(
     #[cfg(test)]
     test_list_gate::wait(repo_root);
     let output = repository_git_command(repo_root, trust_repository)
-        .args(["worktree", "list", "--porcelain"])
+        .args(["worktree", "list", "--porcelain", "-z"])
         .output()
         .map_err(|err| err.to_string())?;
 

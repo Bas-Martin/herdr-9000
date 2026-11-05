@@ -114,6 +114,8 @@ To delete a worktree checkout, use `Delete worktree checkout...` on a grouped ch
 
 When creating a worktree, Herdr copies matching ignored or untracked local files from the repository's main checkout into the new checkout, retaining their relative paths. Tracked destination files are never overwritten. No matches is fine; symlinks that escape the checkout boundary are not followed.
 
+Patterns without `/` match filenames at any depth, not parent directories. `.env` therefore matches dotenv files, not virtual-environment contents; use `.env/**` only if copying the entire directory is intentional.
+
 The built-in global preserve patterns are:
 
 ```text
@@ -131,6 +133,8 @@ docker-compose.override.yml
 Use the preserve-pattern settings to edit global defaults or a project's patterns, with one glob per line in the multiline field. Projects inherit the global defaults unless given an override. An override replaces the entire list rather than extending it; an explicitly empty override disables copying for that project. Reset a project to inheritance to use the current global defaults again.
 
 These settings persist in `projects.json`, not `config.toml`: `default_preserve_patterns` stores the global list, and each project's `preserve_patterns` stores its override. A missing project field means inheritance; `[]` means copying is disabled.
+
+Older projects that omitted `preserve_patterns` inherit the global list after upgrading. Save an empty project override to keep copying disabled.
 
 The JSON API uses an omitted `project_id` for global settings and a project ID for project settings:
 
