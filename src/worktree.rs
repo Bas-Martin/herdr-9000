@@ -340,9 +340,12 @@ fn copy_preserved_file(source: &Path, destination: &Path, relative: &str) -> Res
 
 fn matches_preserve_pattern(relative: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|pattern| {
-        glob_matches(pattern, relative)
-            || (!pattern.contains('/')
-                && glob_matches(pattern, relative.rsplit('/').next().unwrap_or(relative)))
+        let candidate = if pattern.contains('/') {
+            relative
+        } else {
+            relative.rsplit('/').next().unwrap_or(relative)
+        };
+        glob_matches(pattern, candidate)
     })
 }
 
