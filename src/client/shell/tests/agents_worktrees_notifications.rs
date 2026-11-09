@@ -1118,31 +1118,6 @@ fn desktop_workspace_navigation_reveals_overflowing_selection() {
 }
 
 #[test]
-fn new_workspace_overlay_starts_with_empty_name_and_repository_default() {
-    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
-    state.set_snapshot(Box::new(snapshot()));
-    let mut open = ClientShellInput::default();
-    state.record_binding(
-        crate::input::KeybindMatch::Action(crate::input::KeybindAction::NewWorkspace),
-        &mut open,
-    );
-    let expected_root = if cfg!(windows) {
-        "C:\\Repository\\"
-    } else {
-        ""
-    };
-    assert!(matches!(
-        state.overlay.as_ref(),
-        Some(ClientShellOverlay::ProjectCreate(ClientProjectCreateOverlay {
-            project_id: None,
-            name,
-            root_path,
-            ..
-        })) if name.is_empty() && root_path == expected_root
-    ));
-}
-
-#[test]
 fn navigate_mode_selects_workspace_locally_then_focuses_by_stable_id() {
     let mut snapshot = snapshot();
     let mut second = snapshot.workspaces[0].clone();

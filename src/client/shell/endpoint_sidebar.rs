@@ -519,7 +519,7 @@ pub(super) fn render_expanded(
     let footer_y = workspace_area.bottom().saturating_sub(1);
     if config.mouse_capture {
         let attention = active_snapshot.is_some_and(super::global_menu::global_menu_attention);
-        let menu_width = if attention { 8 } else { 6 }.min(workspace_area.width);
+        let menu_width = workspace_area.width.min(6);
         let menu_x = workspace_area.right().saturating_sub(menu_width);
         let workspace_label = " + workspace";
         let workspace_width =
@@ -543,7 +543,7 @@ pub(super) fn render_expanded(
             buffer,
             workspace_area,
             footer_y,
-            if attention { "● menu" } else { "menu" },
+            "menu",
             Style::default().fg(if attention {
                 palette.accent
             } else {

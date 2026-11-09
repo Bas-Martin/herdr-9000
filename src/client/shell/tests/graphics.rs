@@ -277,9 +277,14 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
         }),
         ClientShellOverlay::WorktreeCreate(ClientWorktreeCreateOverlay {
             source_workspace_id: "ws_1".into(),
+            project_id: Some("p1".into()),
             repo_name: "repo".into(),
+            task_name: "task".into(),
             branch: "branch".into(),
+            worktree_directory: "/tmp/herdr-worktrees".into(),
             checkout_path: "path".into(),
+            field: ClientWorktreeCreateField::Branch,
+            branch_overridden: true,
             error: None,
             creating: false,
         }),
@@ -351,7 +356,7 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
         }
         .unwrap();
         let area = rendered.area;
-        assert!(!area.is_empty(), "{overlay:?}");
+        assert!(!area.is_empty());
         let covered = area.intersection(layout.pane_surface);
         let outside = (layout.pane_surface.y..layout.pane_surface.bottom())
             .find_map(|y| {
@@ -370,17 +375,15 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
         state.compose(106, 40).unwrap();
         state.overlay = Some(overlay);
         let frame = state.compose(106, 40).unwrap();
-        assert!(
-            is_placed(&frame.graphics.clone().into_inline_bytes(), outside),
-            "{:?}",
-            state.overlay
-        );
+        assert!(is_placed(
+            &frame.graphics.clone().into_inline_bytes(),
+            outside
+        ));
         if let Some(border) = border {
-            assert!(
-                !is_placed(&frame.graphics.clone().into_inline_bytes(), border),
-                "{:?}",
-                state.overlay
-            );
+            assert!(!is_placed(
+                &frame.graphics.clone().into_inline_bytes(),
+                border
+            ));
             assert!(
                 String::from_utf8_lossy(&frame.graphics.clone().into_inline_bytes())
                     .contains("a=d,d=i")

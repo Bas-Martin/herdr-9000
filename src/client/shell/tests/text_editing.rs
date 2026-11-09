@@ -24,8 +24,13 @@ fn shell(field: usize) -> ClientShellState {
                     workspace_id: "ws_1".into(),
                 },
                 Ok(worktree_list_result(None)),
+                state.active_endpoint_id.clone(),
                 &mut ClientShellInput::default(),
             );
+            if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut() {
+                create.field = ClientWorktreeCreateField::Branch;
+                create.branch_overridden = true;
+            }
         }
         6 => {
             state.open_navigator_overlay();
@@ -44,6 +49,7 @@ fn shell(field: usize) -> ClientShellState {
                     workspace_id: "ws_1".into(),
                 },
                 Ok(worktree_list_result(None)),
+                state.active_endpoint_id.clone(),
                 &mut ClientShellInput::default(),
             );
             state.handle_input_bytes(b"/");

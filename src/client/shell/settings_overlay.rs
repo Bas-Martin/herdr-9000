@@ -36,7 +36,6 @@ fn draw_choice(
 pub(super) fn render_settings_overlay(
     buffer: &mut Buffer,
     settings: &ClientSettingsOverlay,
-    integration_updates_available: bool,
     palette: &Palette,
 ) -> Option<OverlayRender> {
     let integration_height = 14u16
@@ -72,11 +71,6 @@ pub(super) fn render_settings_overlay(
             .add_modifier(Modifier::BOLD),
     );
 
-    let integration_badge = integration_updates_available
-        || settings
-            .integrations
-            .iter()
-            .any(|integration| integration.state == crate::api::schema::IntegrationState::Outdated);
     let mut tab_hits = Vec::new();
     if !border_controls {
         let mut tab_x = inner.x;
@@ -88,8 +82,7 @@ pub(super) fn render_settings_overlay(
         let mut used_width = 0u16;
         for index in (0..=active_tab).rev() {
             let section = ClientSettingsSection::ALL[index];
-            let badge = section == ClientSettingsSection::Integrations && integration_badge;
-            let width = display_width(section.label()) + if badge { 4 } else { 2 };
+            let width = display_width(section.label()) + 2;
             let needed = width.saturating_add(u16::from(used_width > 0));
             if used_width > 0 && used_width.saturating_add(needed) > inner.width {
                 break;
@@ -98,12 +91,7 @@ pub(super) fn render_settings_overlay(
             used_width = used_width.saturating_add(needed);
         }
         for section in ClientSettingsSection::ALL.iter().skip(first_tab) {
-            let badge = *section == ClientSettingsSection::Integrations && integration_badge;
-            let label = if badge {
-                format!(" ● {} ", section.label())
-            } else {
-                format!(" {} ", section.label())
-            };
+            let label = format!(" {} ", section.label());
             let width = display_width(&label).min(inner.right().saturating_sub(tab_x));
             let rect = Rect::new(tab_x, inner.y + 1, width, 1);
             let active = *section == settings.section;
@@ -117,19 +105,6 @@ pub(super) fn render_settings_overlay(
             };
             buffer.set_style(rect, style);
             put_text(buffer, rect.x, rect.y, rect.width, &label, style);
-            if badge && !active {
-                put_text(
-                    buffer,
-                    rect.x.saturating_add(1),
-                    rect.y,
-                    rect.width.saturating_sub(1).min(2),
-                    "● ",
-                    Style::default()
-                        .fg(palette.accent)
-                        .bg(palette.panel_bg)
-                        .add_modifier(Modifier::BOLD),
-                );
-            }
             tab_hits.push((rect, *section));
             tab_x = tab_x.saturating_add(width.saturating_add(1));
             if tab_x >= inner.right() {
