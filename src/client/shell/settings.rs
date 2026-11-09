@@ -298,9 +298,11 @@ impl ClientShellState {
                             integrations,
                         }) => {
                             settings.integrations = integrations;
-                            settings.selected = settings
-                                .selected
-                                .min(settings.integrations.len().saturating_sub(1));
+                            if settings.section == ClientSettingsSection::Integrations {
+                                settings.selected = settings
+                                    .selected
+                                    .min(settings.integrations.len().saturating_sub(1));
+                            }
                         }
                         Ok(_) => {
                             self.set_endpoint_error(

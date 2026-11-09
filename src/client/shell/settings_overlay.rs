@@ -49,9 +49,10 @@ pub(super) fn render_settings_overlay(
     };
     let popup = popup(buffer.area, 76, height)?;
     let inner = panel(buffer, popup, palette.accent, palette.panel_bg)?;
-    if inner.width < 20 || inner.height < 8 {
+    if inner.width < 20 || inner.height < 4 {
         return None;
     }
+    let compact = inner.height < 8;
 
     put_text(
         buffer,
@@ -72,7 +73,24 @@ pub(super) fn render_settings_overlay(
             .any(|integration| integration.state == crate::api::schema::IntegrationState::Outdated);
     let mut tab_x = inner.x;
     let mut tab_hits = Vec::new();
-    for section in ClientSettingsSection::ALL {
+    let active_tab = ClientSettingsSection::ALL
+        .iter()
+        .position(|section| *section == settings.section)
+        .unwrap_or(0);
+    let mut first_tab = active_tab;
+    let mut used_width = 0u16;
+    for index in (0..=active_tab).rev() {
+        let section = ClientSettingsSection::ALL[index];
+        let badge = section == ClientSettingsSection::Integrations && integration_badge;
+        let width = display_width(section.label()) + if badge { 4 } else { 2 };
+        let needed = width.saturating_add(u16::from(used_width > 0));
+        if used_width > 0 && used_width.saturating_add(needed) > inner.width {
+            break;
+        }
+        first_tab = index;
+        used_width = used_width.saturating_add(needed);
+    }
+    for section in ClientSettingsSection::ALL.iter().skip(first_tab) {
         let badge = *section == ClientSettingsSection::Integrations && integration_badge;
         let label = if badge {
             format!(" ● {} ", section.label())
@@ -111,20 +129,25 @@ pub(super) fn render_settings_overlay(
             break;
         }
     }
-    put_text(
-        buffer,
-        inner.x,
-        inner.y + 2,
-        inner.width,
-        &"─".repeat(inner.width as usize),
-        Style::default().fg(palette.surface0).bg(palette.panel_bg),
-    );
+    if !compact {
+        put_text(
+            buffer,
+            inner.x,
+            inner.y + 2,
+            inner.width,
+            &"─".repeat(inner.width as usize),
+            Style::default().fg(palette.surface0).bg(palette.panel_bg),
+        );
+    }
 
+    let content_offset = if compact { 2 } else { 4 };
     let content = Rect::new(
         inner.x,
-        inner.y + 4,
+        inner.y + content_offset,
         inner.width,
-        inner.height.saturating_sub(7),
+        inner
+            .height
+            .saturating_sub(content_offset + if compact { 1 } else { 3 }),
     );
     let mut choice_hits = Vec::new();
     match settings.section {
@@ -195,7 +218,7 @@ pub(super) fn render_settings_overlay(
             );
         }
         ClientSettingsSection::Integrations => {
-            render_integrations(buffer, content, settings, palette);
+            render_integrations(buffer, content, settings, palette, &mut choice_hits);
         }
     }
 
@@ -234,14 +257,16 @@ pub(super) fn render_settings_overlay(
             .bg(palette.surface0)
             .add_modifier(Modifier::BOLD),
     );
-    put_text(
-        buffer,
-        inner.x,
-        inner.bottom().saturating_sub(2),
-        inner.width,
-        " ↑↓ select  tab section",
-        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
-    );
+    if !compact {
+        put_text(
+            buffer,
+            inner.x,
+            inner.bottom().saturating_sub(2),
+            inner.width,
+            " ↑↓ select  tab section",
+            Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+        );
+    }
 
     Some(OverlayRender {
         area: popup,
@@ -264,31 +289,46 @@ fn render_choice_section(
     palette: &Palette,
     hits: &mut Vec<(Rect, usize)>,
 ) {
-    put_text(
-        buffer,
-        area.x,
-        area.y,
-        area.width,
-        title,
-        Style::default()
-            .fg(palette.text)
-            .bg(palette.panel_bg)
-            .add_modifier(Modifier::BOLD),
-    );
-    put_text(
-        buffer,
-        area.x,
-        area.y + 1,
-        area.width,
-        description,
-        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
-    );
+    let heading_rows = area.height.saturating_sub(1).min(3);
+    if heading_rows > 0 {
+        put_text(
+            buffer,
+            area.x,
+            area.y,
+            area.width,
+            title,
+            Style::default()
+                .fg(palette.text)
+                .bg(palette.panel_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+    if heading_rows > 1 {
+        put_text(
+            buffer,
+            area.x,
+            area.y + 1,
+            area.width,
+            description,
+            Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+        );
+    }
     let row_gap = u16::from(choices.len() > 2);
-    for (index, choice) in choices.iter().enumerate() {
-        let y = area.y + 3 + index as u16 * (1 + row_gap);
-        if y >= area.bottom() {
-            break;
-        }
+    let visible = usize::from(
+        area.height
+            .saturating_sub(heading_rows)
+            .saturating_add(row_gap)
+            / (1 + row_gap),
+    );
+    let scroll = selected.saturating_sub(visible.saturating_sub(1));
+    for (visible_index, (index, choice)) in choices
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible)
+        .enumerate()
+    {
+        let y = area.y + heading_rows + visible_index as u16 * (1 + row_gap);
         let rect = Rect::new(area.x, y, area.width, 1);
         draw_choice(buffer, rect, choice, index == selected, false, palette);
         hits.push((rect, index));
@@ -300,31 +340,37 @@ fn render_integrations(
     area: Rect,
     settings: &ClientSettingsOverlay,
     palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
 ) {
-    put_text(
-        buffer,
-        area.x,
-        area.y,
-        area.width,
-        "agent integrations",
-        Style::default()
-            .fg(palette.text)
-            .bg(palette.panel_bg)
-            .add_modifier(Modifier::BOLD),
-    );
-    put_text(
-        buffer,
-        area.x,
-        area.y + 1,
-        area.width,
-        "enable session restore and, where supported, direct status updates",
-        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
-    );
+    let heading_rows = area.height.saturating_sub(1).min(3);
+    if heading_rows > 0 {
+        put_text(
+            buffer,
+            area.x,
+            area.y,
+            area.width,
+            "agent integrations",
+            Style::default()
+                .fg(palette.text)
+                .bg(palette.panel_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+    if heading_rows > 1 {
+        put_text(
+            buffer,
+            area.x,
+            area.y + 1,
+            area.width,
+            "enable session restore and, where supported, direct status updates",
+            Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+        );
+    }
     if settings.loading_integrations {
         put_text(
             buffer,
             area.x,
-            area.y + 3,
+            area.y + heading_rows,
             area.width,
             " loading integrations…",
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),
@@ -335,18 +381,35 @@ fn render_integrations(
         put_text(
             buffer,
             area.x,
-            area.y + 3,
+            area.y + heading_rows,
             area.width,
             " no integration targets available",
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),
         );
         return;
     }
-    for (index, integration) in settings.integrations.iter().enumerate() {
-        let y = area.y + 3 + index as u16;
-        if y >= area.bottom() {
-            break;
-        }
+    let available = usize::from(area.height.saturating_sub(heading_rows));
+    let message_count = settings
+        .integration_messages
+        .len()
+        .min(6)
+        .min(available.saturating_sub(1));
+    let show_progress = settings.installing_integrations && available > message_count + 1;
+    let visible = available.saturating_sub(message_count + usize::from(show_progress));
+    let scroll = settings.selected.saturating_sub(visible.saturating_sub(1));
+    for (visible_index, (index, integration)) in settings
+        .integrations
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible)
+        .enumerate()
+    {
+        let y = area.y + heading_rows + visible_index as u16;
+        let rect = Rect::new(area.x, y, area.width, 1);
+        let selected = index == settings.selected;
+        let style = choice_style(selected, palette);
+        buffer.set_style(rect, style);
         let (marker, color, status) = match integration.state {
             crate::api::schema::IntegrationState::Current => ("✓", palette.green, "installed"),
             crate::api::schema::IntegrationState::Outdated => {
@@ -365,7 +428,7 @@ fn render_integrations(
             y,
             3,
             &format!(" {marker}"),
-            Style::default().fg(color).bg(palette.panel_bg),
+            if selected { style } else { style.fg(color) },
         );
         put_text(
             buffer,
@@ -373,7 +436,11 @@ fn render_integrations(
             y,
             11.min(area.width.saturating_sub(3)),
             &format!("{:<9}", integration.label),
-            Style::default().fg(palette.subtext0).bg(palette.panel_bg),
+            if selected {
+                style
+            } else {
+                style.fg(palette.subtext0)
+            },
         );
         put_text(
             buffer,
@@ -381,14 +448,27 @@ fn render_integrations(
             y,
             area.width.saturating_sub(14),
             status,
-            Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+            if selected {
+                style
+            } else {
+                style.fg(palette.overlay1)
+            },
         );
+        hits.push((rect, index));
     }
-    let message_y = area
-        .y
-        .saturating_add(4)
-        .saturating_add(settings.integrations.len() as u16);
-    for (offset, message) in settings.integration_messages.iter().take(6).enumerate() {
+    let message_y = area.y
+        + heading_rows
+        + settings
+            .integrations
+            .len()
+            .saturating_sub(scroll)
+            .min(visible) as u16;
+    for (offset, message) in settings
+        .integration_messages
+        .iter()
+        .take(message_count)
+        .enumerate()
+    {
         let y = message_y.saturating_add(offset as u16);
         if y >= area.bottom() {
             break;
@@ -402,11 +482,11 @@ fn render_integrations(
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),
         );
     }
-    if settings.installing_integrations && message_y < area.bottom() {
+    if show_progress {
         put_text(
             buffer,
             area.x,
-            message_y,
+            message_y + message_count as u16,
             area.width,
             " installing…",
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),

@@ -139,11 +139,16 @@ pub(crate) fn render_global_menu(
     let rect = Rect::new(x, y, width, height);
     let inner = panel(buffer, rect, palette.accent, palette.panel_bg)?;
     let mut rows = Vec::new();
-    for (index, (label, action)) in items.iter().enumerate() {
-        let row_y = inner.y.saturating_add(index as u16);
-        if row_y >= inner.bottom() {
-            break;
-        }
+    let visible = usize::from(inner.height);
+    let scroll = menu.highlighted.saturating_sub(visible.saturating_sub(1));
+    for (visible_index, (index, (label, action))) in items
+        .iter()
+        .enumerate()
+        .skip(scroll)
+        .take(visible)
+        .enumerate()
+    {
+        let row_y = inner.y.saturating_add(visible_index as u16);
         let row = Rect::new(inner.x, row_y, inner.width, 1);
         let highlighted = index == menu.highlighted;
         let style = if highlighted {

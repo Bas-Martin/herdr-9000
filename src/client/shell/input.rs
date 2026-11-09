@@ -644,14 +644,14 @@ impl ClientShellState {
             }
             return None;
         }
+        if self.overlay.is_some() {
+            self.route_overlay_key(key, outcome);
+            return None;
+        }
         if let Some(target) = self.popup_input_target() {
             return Some(target);
         }
         if self.popup_pending {
-            return None;
-        }
-        if self.overlay.is_some() {
-            self.route_overlay_key(key, outcome);
             return None;
         }
         if matches!(key.code, KeyCode::Modifier(_)) {

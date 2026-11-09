@@ -1391,6 +1391,14 @@ impl ClientShellState {
                 .find(|(rect, _)| super::contains(*rect, point))
                 .copied();
             match mouse.kind {
+                MouseEventKind::ScrollUp => {
+                    self.move_global_menu_selection(-1);
+                    outcome.repaint = true;
+                }
+                MouseEventKind::ScrollDown => {
+                    self.move_global_menu_selection(1);
+                    outcome.repaint = true;
+                }
                 MouseEventKind::Moved => {
                     if let (Some((_, index)), Some(ClientShellOverlay::GlobalMenu(menu))) =
                         (row_hit, self.overlay.as_mut())
@@ -1400,11 +1408,11 @@ impl ClientShellState {
                     }
                 }
                 MouseEventKind::Down(MouseButton::Left) => {
-                    if super::contains(self.hits.global_launcher, point) {
+                    if let Some((_, index)) = row_hit {
+                        self.activate_global_menu_item(index, outcome);
+                    } else if super::contains(self.hits.global_launcher, point) {
                         self.toggle_global_menu();
                         outcome.repaint = true;
-                    } else if let Some((_, index)) = row_hit {
-                        self.activate_global_menu_item(index, outcome);
                     } else {
                         self.overlay = None;
                         outcome.repaint = true;
@@ -1625,6 +1633,14 @@ impl ClientShellState {
             return;
         }
         if matches!(self.overlay, Some(ClientShellOverlay::Settings(_))) {
+            if let Some(delta) = match mouse.kind {
+                MouseEventKind::ScrollUp => Some(-1),
+                MouseEventKind::ScrollDown => Some(1),
+                _ => None,
+            } {
+                self.move_settings_selection(delta);
+                outcome.repaint = true;
+            }
             if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                 if let Some((_, section)) = self
                     .hits
