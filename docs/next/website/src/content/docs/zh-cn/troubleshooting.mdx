@@ -107,6 +107,12 @@ herdr
 
 先用 `ssh <host>` 确认普通 OpenSSH 连接正常。若在非交互 shell、CI 或移动终端中使用带密码的密钥，请在远程连接前把密钥载入 `ssh-agent`。见[持久化和远程访问](/zh-cn/docs/persistence-remote/#remote-attach-over-ssh)。
 
+## 源码构建下载 Wuffs 依赖失败
+
+Zig 的 HTTP 客户端下载 Wuffs 压缩包时可能报告 `HttpConnectionClosing` 或 `Unexpected`。CI 使用 `curl` 下载，再通过 `zig fetch` 导入，并将计算出的哈希与未修改的 vendor 固定值比较。TLS 和校验和验证始终保持启用。
+
+在仓库检出目录中，确保 Zig 0.16.0 和 `curl` 位于 PATH，将 `ZIG_GLOBAL_CACHE_DIR` 设为后续构建使用的绝对缓存路径，然后运行 `python3 scripts/prefetch_wuffs_dependencies.py`（Windows 使用 `python`）。此工具也支持现有的 `ZIG` 可执行文件覆盖设置。运行 Cargo 时请使用相同的缓存环境。
+
 ## 查找诊断日志
 
 Herdr 日志默认位于 `~/.config/herdr/`:

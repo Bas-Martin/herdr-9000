@@ -107,6 +107,12 @@ OS または外側のターミナルが Herdr に届く前にキーを処理し�
 
 まず `ssh <host>` で通常の OpenSSH 接続が動作することを確認してください。非対話シェル、CI、モバイルターミナルでパスフレーズ付きキーを使う場合は、リモートアタッチの前にキーを `ssh-agent` へ読み込んでください。[永続化とリモートアクセス](/ja/docs/persistence-remote/#remote-attach-over-ssh)を参照してください。
 
+## ソースビルドで Wuffs 依存関係のダウンロードに失敗する
+
+Zig の HTTP クライアントは、Wuffs アーカイブの取得時に `HttpConnectionClosing` や `Unexpected` を報告することがあります。CI は `curl` で取得し、`zig fetch` で取り込んで、計算されたハッシュを変更していない vendor の固定値と比較します。TLS とチェックサムの検証は無効にしません。
+
+Zig 0.16.0 と `curl` が PATH にあるリポジトリのチェックアウトで、`ZIG_GLOBAL_CACHE_DIR` に後続のビルドで使う絶対キャッシュパスを設定し、`python3 scripts/prefetch_wuffs_dependencies.py`（Windows では `python`）を実行してください。既存の `ZIG` 実行ファイル指定にも対応します。Cargo の実行時も同じキャッシュ環境を使ってください。
+
 ## 診断ログを探す
 
 Herdr のログはデフォルトで `~/.config/herdr/` にあります:

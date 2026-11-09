@@ -107,6 +107,12 @@ The operating system or outer terminal may consume the chord before Herdr receiv
 
 First confirm that normal OpenSSH works with `ssh <host>`. For a passphrase-protected key in a non-interactive shell, CI job, or mobile terminal, load the key into `ssh-agent` before starting remote attach. See [Persistence and remote access](/docs/persistence-remote/#remote-attach-over-ssh).
 
+## Source builds fail downloading Wuffs dependencies
+
+Zig's HTTP client can report `HttpConnectionClosing` or `Unexpected` while downloading Wuffs archives. CI downloads these archives with `curl`, imports them with `zig fetch`, and compares the computed hashes with the unchanged vendor pins. TLS and checksum verification remain enabled.
+
+From a repository checkout with Zig 0.16.0 and `curl` on PATH, set `ZIG_GLOBAL_CACHE_DIR` to the absolute cache directory used by the subsequent build, then run `python3 scripts/prefetch_wuffs_dependencies.py` (`python` on Windows). The helper also honors the existing `ZIG` executable override. Use the same cache environment when running Cargo.
+
 ## Find diagnostic logs
 
 Herdr logs live in `~/.config/herdr/` by default:
