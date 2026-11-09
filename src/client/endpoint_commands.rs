@@ -103,6 +103,14 @@ impl EndpointCommands {
                 cancelled.push(request_id);
                 continue;
             }
+            if matches!(
+                queued.request.method,
+                crate::api::schema::Method::WorkspaceFocus(_)
+            ) && (endpoints.active_id() != endpoint_id || !endpoints.active_surface_available())
+            {
+                lane.queued.push_front(queued);
+                break;
+            }
             let request = match serde_json::to_string(&queued.request) {
                 Ok(request) => request,
                 Err(error) => {
