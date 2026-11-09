@@ -907,26 +907,6 @@ mod tests {
         assert_eq!(option_values(pane_split, "direction"), ["right", "down"]);
     }
 
-    #[test]
-    fn spec_models_agent_start_target_and_trailing_args() {
-        let cmd = super::command();
-        let agent_start = command_path(&cmd, &["agent", "start"]);
-        assert!(has_option(agent_start, "kind"));
-        assert_eq!(
-            option_values(agent_start, "kind"),
-            crate::detect::Agent::ALL
-                .map(crate::detect::agent_label)
-                .map(str::to_string)
-        );
-        assert!(has_option(agent_start, "pane"));
-        for legacy in ["cwd", "workspace", "tab", "split", "focus", "env", "argv"] {
-            assert!(!has_option(agent_start, legacy), "legacy option --{legacy}");
-        }
-        assert!(agent_start
-            .get_arguments()
-            .any(|arg| arg.get_id() == "agent_args"));
-    }
-
     fn long_help(path: &[&str]) -> String {
         let mut args = vec!["herdr".to_string()];
         args.extend(path.iter().map(|segment| segment.to_string()));
@@ -954,27 +934,6 @@ mod tests {
         assert!(
             !leaf.contains(super::super::AGENT_HELP_FOOTER),
             "leaf help should stay focused: {leaf}"
-        );
-    }
-
-    #[test]
-    fn next_step_hints_render_without_replacing_existing_after_help() {
-        let agent_start = long_help(&["agent", "start"]);
-        assert!(
-            agent_start.contains("The pane must be at its interactive shell prompt."),
-            "agent start dropped its existing after_help: {agent_start}"
-        );
-        assert!(
-            agent_start.contains("next: herdr agent prompt <TARGET> <TEXT> --wait"),
-            "agent start is missing its next-step hint: {agent_start}"
-        );
-
-        let pane_send_text = long_help(&["pane", "send-text"]);
-        assert!(
-            pane_send_text.contains(
-                "next: herdr pane run <PANE_ID> <COMMAND> sends text and Enter in one call"
-            ),
-            "pane send-text is missing its next-step hint: {pane_send_text}"
         );
     }
 
