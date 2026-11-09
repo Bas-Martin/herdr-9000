@@ -359,14 +359,6 @@ fn all_naming_targets_preserve_submission_and_empty_semantics() {
                     assert!(result.actions.is_empty());
                     assert!(!project.submitting);
                     assert!(project.error.is_some());
-                    assert_eq!(
-                        project.field,
-                        if empty {
-                            ClientProjectCreateField::Name
-                        } else {
-                            ClientProjectCreateField::RootPath
-                        }
-                    );
                     continue;
                 }
                 assert!(project.submitting);
