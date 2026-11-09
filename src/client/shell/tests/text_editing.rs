@@ -13,7 +13,12 @@ fn shell(field: usize) -> ClientShellState {
     state.set_pane_surface(frame);
     state.compose(106, 30).expect("initial shell");
     match field {
-        0 => state.open_new_workspace_overlay(),
+        0 => {
+            state.open_new_workspace_overlay();
+            if let Some(ClientShellOverlay::ProjectCreate(project)) = state.overlay.as_mut() {
+                project.root_path = "/repo".into();
+            }
+        }
         1 => state.open_rename_workspace_overlay(),
         2 => state.open_new_tab_overlay(),
         3 => state.open_rename_tab_overlay(),
@@ -69,6 +74,11 @@ fn shell(field: usize) -> ClientShellState {
 
 fn editor(state: &mut ClientShellState) -> &mut TextEditor {
     match state.overlay.as_mut() {
+        Some(ClientShellOverlay::ProjectCreate(v)) => match v.field {
+            ClientProjectCreateField::Name => &mut v.name,
+            ClientProjectCreateField::RootPath => &mut v.root_path,
+            ClientProjectCreateField::WorktreeRoot => &mut v.worktree_root,
+        },
         Some(ClientShellOverlay::Rename(v)) => &mut v.input,
         Some(ClientShellOverlay::Navigator(v)) => &mut v.query,
         Some(ClientShellOverlay::Help(v)) => &mut v.query,
@@ -135,7 +145,7 @@ fn text_delivery_paths_insert_at_the_cursor() {
 
 #[test]
 fn rename_clear_exceptions_remain_local_and_copy_prompt_yields_to_popup() {
-    for field in 0..5 {
+    for field in 1..5 {
         for (code, modifiers) in [
             (KeyCode::Char('c'), KeyModifiers::CONTROL),
             (KeyCode::Backspace, KeyModifiers::SUPER),
@@ -321,15 +331,49 @@ fn focused_filters_keep_ctrl_n_p_navigation_and_literal_commands() {
 fn all_naming_targets_preserve_submission_and_empty_semantics() {
     use crate::api::schema::Method;
     for field in 0..5 {
-        for empty in [false, true] {
+        for (empty, empty_root) in [(false, false), (true, false), (false, true)] {
+            if empty_root && field != 0 {
+                continue;
+            }
             let mut state = shell(field);
             *editor(&mut state) = TextEditor::from(if empty { "  " } else { "  ab " });
             if !empty {
                 press(&mut state, KeyCode::Home, KeyModifiers::NONE);
                 press(&mut state, KeyCode::Char('X'), KeyModifiers::NONE);
             }
-            let result = press(&mut state, KeyCode::Enter, KeyModifiers::NONE);
-            assert!(state.overlay.is_none());
+            if empty_root {
+                if let Some(ClientShellOverlay::ProjectCreate(project)) = state.overlay.as_mut() {
+                    project.root_path = "  ".into();
+                }
+            }
+            let mut result = press(&mut state, KeyCode::Enter, KeyModifiers::NONE);
+            if field == 0 {
+                assert!(result.actions.is_empty());
+                let advance = press(&mut state, KeyCode::Enter, KeyModifiers::NONE);
+                assert!(advance.actions.is_empty());
+                result = press(&mut state, KeyCode::Enter, KeyModifiers::NONE);
+                let Some(ClientShellOverlay::ProjectCreate(project)) = &state.overlay else {
+                    panic!("project creation should stay open until its endpoint result");
+                };
+                if empty || empty_root {
+                    assert!(result.actions.is_empty());
+                    assert!(!project.submitting);
+                    assert!(project.error.is_some());
+                    assert_eq!(
+                        project.field,
+                        if empty {
+                            ClientProjectCreateField::Name
+                        } else {
+                            ClientProjectCreateField::RootPath
+                        }
+                    );
+                    continue;
+                }
+                assert!(project.submitting);
+                assert!(project.error.is_none());
+            } else {
+                assert!(state.overlay.is_none());
+            }
             if empty && matches!(field, 1 | 3) {
                 assert!(result.actions.is_empty());
                 continue;
@@ -339,8 +383,10 @@ fn all_naming_targets_preserve_submission_and_empty_semantics() {
             };
             let expected = if empty { "" } else { "X  ab" };
             match &request.method {
-                Method::WorkspaceCreate(v) => {
-                    assert_eq!(v.label.as_deref(), (!empty).then_some(expected))
+                Method::ProjectCreate(v) if field == 0 => {
+                    assert_eq!(v.name, expected);
+                    assert_eq!(v.root_path, "/repo");
+                    assert!(v.open && v.focus);
                 }
                 Method::WorkspaceRename(v) => assert_eq!(v.label, expected),
                 Method::TabCreate(v) => {

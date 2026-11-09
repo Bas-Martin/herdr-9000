@@ -508,6 +508,7 @@ mod tests {
     #[test]
     fn optional_history_failure_does_not_block_later_layout_saves() {
         let mut writer = writer(true);
+        writer.save(&snapshot(), None);
         let history = writer.path.with_file_name("session-history.json");
         std::fs::create_dir(&history).unwrap();
         std::fs::write(

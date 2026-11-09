@@ -1289,6 +1289,12 @@ fn unavailable_worktree_create_does_not_wedge_the_overlay() {
     };
     state.handle_endpoint_result("boot-1", &request.id, Ok(worktree_list_result(None)));
     state.set_endpoint_methods(Some(vec!["worktree.list".into()]));
+    if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut() {
+        create.task_name = "Unavailable".into();
+        create.branch = TextEditor::default();
+        create.field = ClientWorktreeCreateField::Branch;
+        create.branch_overridden = true;
+    }
     state.handle_input_bytes(b"feature/unavailable");
 
     let submit = state.handle_input_bytes(b"\r");

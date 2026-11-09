@@ -48,6 +48,12 @@ fn submit_worktree(mut state: ClientShellState) -> (ClientShellState, Vec<Client
         panic!("expected worktree preparation");
     };
     state.handle_endpoint_result(&boot_id, &request.id, Ok(worktree_list_result(None)));
+    if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut() {
+        create.task_name = "Reconnect".into();
+        create.branch = TextEditor::default();
+        create.field = ClientWorktreeCreateField::Branch;
+        create.branch_overridden = true;
+    }
     state.handle_input_bytes(b"feature/reconnect");
     let outcome = state.handle_input_bytes(b"\r");
     assert!(matches!(

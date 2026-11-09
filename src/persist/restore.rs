@@ -2143,8 +2143,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_rejects_history_from_another_layout_or_without_provenance() {
-        for legacy in [false, true] {
+    async fn restore_accepts_coherent_legacy_history_but_rejects_mismatched_layouts() {
+        for (legacy, mismatched_ids) in [(false, false), (true, false), (true, true)] {
             let (mut snapshot, history) = snapshot_with_saved_pane_history();
             let mut value = serde_json::to_value(history).unwrap();
             if legacy {
@@ -2156,7 +2156,12 @@ mod tests {
                     .unwrap()
                     .cwd = std::env::temp_dir();
             }
-            let history = serde_json::from_value(value).unwrap();
+            let mut history: SessionHistorySnapshot = serde_json::from_value(value).unwrap();
+            if mismatched_ids {
+                let panes = &mut history.workspaces[0].tabs[0].panes;
+                let pane = panes.remove(&0).unwrap();
+                panes.insert(1, pane);
+            }
             let (events, _rx) = mpsc::channel(8);
             let (_, _, runtimes) = restore(
                 &snapshot,
@@ -2172,11 +2177,12 @@ mod tests {
                 Arc::new(RenderSignal::new()),
             );
             let runtime = runtimes.values().next().unwrap();
-            assert!(
-                !runtime
+            assert_eq!(
+                runtime
                     .recent_unwrapped_text(10)
                     .contains("RESTORED_HISTORY"),
-                "screen history must belong to the exact saved layout"
+                legacy && !mismatched_ids,
+                "only matching modern or coherent legacy history may replay"
             );
             for (_, runtime) in runtimes {
                 runtime.shutdown();
