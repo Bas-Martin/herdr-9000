@@ -49,17 +49,19 @@ pub(super) fn render_settings_overlay(
     };
     let popup = popup(buffer.area, 76, height)?;
     let inner = panel(buffer, popup, palette.accent, palette.panel_bg)?;
-    if inner.width < 20 || inner.height < 4 {
+    if inner.width < 20 || inner.height < 2 {
         return None;
     }
     let compact = inner.height < 8;
+    let border_controls = inner.height < 4;
+    let title = border_controls.then(|| format!(" {} · settings", settings.section.label()));
 
     put_text(
         buffer,
         inner.x,
-        inner.y,
+        if border_controls { popup.y } else { inner.y },
         inner.width,
-        " settings",
+        title.as_deref().unwrap_or(" settings"),
         Style::default()
             .fg(palette.text)
             .bg(palette.panel_bg)
@@ -71,62 +73,64 @@ pub(super) fn render_settings_overlay(
             .integrations
             .iter()
             .any(|integration| integration.state == crate::api::schema::IntegrationState::Outdated);
-    let mut tab_x = inner.x;
     let mut tab_hits = Vec::new();
-    let active_tab = ClientSettingsSection::ALL
-        .iter()
-        .position(|section| *section == settings.section)
-        .unwrap_or(0);
-    let mut first_tab = active_tab;
-    let mut used_width = 0u16;
-    for index in (0..=active_tab).rev() {
-        let section = ClientSettingsSection::ALL[index];
-        let badge = section == ClientSettingsSection::Integrations && integration_badge;
-        let width = display_width(section.label()) + if badge { 4 } else { 2 };
-        let needed = width.saturating_add(u16::from(used_width > 0));
-        if used_width > 0 && used_width.saturating_add(needed) > inner.width {
-            break;
+    if !border_controls {
+        let mut tab_x = inner.x;
+        let active_tab = ClientSettingsSection::ALL
+            .iter()
+            .position(|section| *section == settings.section)
+            .unwrap_or(0);
+        let mut first_tab = active_tab;
+        let mut used_width = 0u16;
+        for index in (0..=active_tab).rev() {
+            let section = ClientSettingsSection::ALL[index];
+            let badge = section == ClientSettingsSection::Integrations && integration_badge;
+            let width = display_width(section.label()) + if badge { 4 } else { 2 };
+            let needed = width.saturating_add(u16::from(used_width > 0));
+            if used_width > 0 && used_width.saturating_add(needed) > inner.width {
+                break;
+            }
+            first_tab = index;
+            used_width = used_width.saturating_add(needed);
         }
-        first_tab = index;
-        used_width = used_width.saturating_add(needed);
-    }
-    for section in ClientSettingsSection::ALL.iter().skip(first_tab) {
-        let badge = *section == ClientSettingsSection::Integrations && integration_badge;
-        let label = if badge {
-            format!(" ● {} ", section.label())
-        } else {
-            format!(" {} ", section.label())
-        };
-        let width = display_width(&label).min(inner.right().saturating_sub(tab_x));
-        let rect = Rect::new(tab_x, inner.y + 1, width, 1);
-        let active = *section == settings.section;
-        let style = if active {
-            Style::default()
-                .fg(contrast(palette))
-                .bg(palette.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(palette.overlay1).bg(palette.panel_bg)
-        };
-        buffer.set_style(rect, style);
-        put_text(buffer, rect.x, rect.y, rect.width, &label, style);
-        if badge && !active {
-            put_text(
-                buffer,
-                rect.x.saturating_add(1),
-                rect.y,
-                rect.width.saturating_sub(1).min(2),
-                "● ",
+        for section in ClientSettingsSection::ALL.iter().skip(first_tab) {
+            let badge = *section == ClientSettingsSection::Integrations && integration_badge;
+            let label = if badge {
+                format!(" ● {} ", section.label())
+            } else {
+                format!(" {} ", section.label())
+            };
+            let width = display_width(&label).min(inner.right().saturating_sub(tab_x));
+            let rect = Rect::new(tab_x, inner.y + 1, width, 1);
+            let active = *section == settings.section;
+            let style = if active {
                 Style::default()
-                    .fg(palette.accent)
-                    .bg(palette.panel_bg)
-                    .add_modifier(Modifier::BOLD),
-            );
-        }
-        tab_hits.push((rect, *section));
-        tab_x = tab_x.saturating_add(width.saturating_add(1));
-        if tab_x >= inner.right() {
-            break;
+                    .fg(contrast(palette))
+                    .bg(palette.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(palette.overlay1).bg(palette.panel_bg)
+            };
+            buffer.set_style(rect, style);
+            put_text(buffer, rect.x, rect.y, rect.width, &label, style);
+            if badge && !active {
+                put_text(
+                    buffer,
+                    rect.x.saturating_add(1),
+                    rect.y,
+                    rect.width.saturating_sub(1).min(2),
+                    "● ",
+                    Style::default()
+                        .fg(palette.accent)
+                        .bg(palette.panel_bg)
+                        .add_modifier(Modifier::BOLD),
+                );
+            }
+            tab_hits.push((rect, *section));
+            tab_x = tab_x.saturating_add(width.saturating_add(1));
+            if tab_x >= inner.right() {
+                break;
+            }
         }
     }
     if !compact {
@@ -140,14 +144,25 @@ pub(super) fn render_settings_overlay(
         );
     }
 
-    let content_offset = if compact { 2 } else { 4 };
+    let content_offset = if border_controls {
+        0
+    } else if compact {
+        2
+    } else {
+        4
+    };
+    let footer_rows = if border_controls {
+        0
+    } else if compact {
+        1
+    } else {
+        3
+    };
     let content = Rect::new(
         inner.x,
         inner.y + content_offset,
         inner.width,
-        inner
-            .height
-            .saturating_sub(content_offset + if compact { 1 } else { 3 }),
+        inner.height.saturating_sub(content_offset + footer_rows),
     );
     let mut choice_hits = Vec::new();
     match settings.section {
@@ -227,17 +242,32 @@ pub(super) fn render_settings_overlay(
         .iter()
         .any(super::super::settings::integration_needs_install);
     let show_primary = settings.section != ClientSettingsSection::Integrations || installable;
-    let labels = if show_primary { vec![10, 12] } else { vec![12] };
-    let buttons = row(inner, &labels, 2, inner.height.saturating_sub(1));
+    let compact_buttons = inner.width < 24;
+    let labels: &[u16] = match (show_primary, compact_buttons) {
+        (true, true) => &[8, 8],
+        (true, false) => &[10, 12],
+        (false, true) => &[8],
+        (false, false) => &[12],
+    };
+    let footer = if border_controls {
+        Rect::new(inner.x, popup.bottom() - 1, inner.width, 1)
+    } else {
+        inner
+    };
+    let buttons = row(footer, labels, 2, footer.height.saturating_sub(1));
     let (primary, close) = if show_primary {
         let primary = buttons[0];
         button(
             buffer,
             primary,
-            if settings.section == ClientSettingsSection::Integrations {
-                " ↵ install "
-            } else {
-                " ↵ apply "
+            match (
+                settings.section == ClientSettingsSection::Integrations,
+                compact_buttons,
+            ) {
+                (true, true) => "install",
+                (false, true) => "apply",
+                (true, false) => " ↵ install ",
+                (false, false) => " ↵ apply ",
             },
             Style::default()
                 .fg(contrast(palette))
@@ -251,7 +281,11 @@ pub(super) fn render_settings_overlay(
     button(
         buffer,
         close,
-        " esc close ",
+        if compact_buttons {
+            "close"
+        } else {
+            " esc close "
+        },
         Style::default()
             .fg(palette.text)
             .bg(palette.surface0)

@@ -209,8 +209,8 @@ fn validate_target(target: &str) -> std::io::Result<()> {
     }
     Ok(())
 }
-#[cfg(not(windows))]
 
+#[cfg(not(windows))]
 fn parse_u32(value: &str, field: &str) -> std::io::Result<u32> {
     value.parse().map_err(|_| {
         std::io::Error::new(

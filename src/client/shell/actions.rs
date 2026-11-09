@@ -964,13 +964,14 @@ impl ClientShellState {
                             project.error = Some("Unexpected project response.".to_owned());
                         }
                     }
-                    Err(error) => match self.overlay.as_mut() {
-                        Some(ClientShellOverlay::ProjectCreate(project)) => {
+                    Err(error) => {
+                        if let Some(ClientShellOverlay::ProjectCreate(project)) =
+                            self.overlay.as_mut()
+                        {
                             project.submitting = false;
                             project.error = Some(error.message);
                         }
-                        _ => {}
-                    },
+                    }
                 }
                 return (true, Vec::new());
             }
