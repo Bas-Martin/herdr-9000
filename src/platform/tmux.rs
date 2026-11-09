@@ -28,9 +28,9 @@ pub(crate) struct SpawnedPane {
 }
 
 #[cfg(not(windows))]
-const FIELD_SEPARATOR: char = '\u{1f}';
+const FIELD_SEPARATOR: char = '\t';
 #[cfg(not(windows))]
-const LIST_FORMAT: &str = "#{pane_id}\u{1f}#{session_id}\u{1f}#{session_name}\u{1f}#{window_id}\u{1f}#{window_index}\u{1f}#{window_name}\u{1f}#{pane_index}\u{1f}#{pane_title}\u{1f}#{pane_current_command}\u{1f}#{pane_current_path}\u{1f}#{pane_active}\u{1f}#{pane_dead}\u{1f}#{@herdr_managed}\u{1f}#{@herdr_agent_name}\u{1f}#{@herdr_agent_kind}\u{1f}#{@herdr_parent_pane_id}";
+const LIST_FORMAT: &str = "#{pane_id}\t#{session_id}\t#{session_name}\t#{window_id}\t#{window_index}\t#{window_name}\t#{pane_index}\t#{pane_title}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_active}\t#{pane_dead}\t#{@herdr_managed}\t#{@herdr_agent_name}\t#{@herdr_agent_kind}\t#{@herdr_parent_pane_id}";
 
 #[cfg(not(windows))]
 pub(crate) fn list_panes() -> std::io::Result<Vec<PaneSnapshot>> {

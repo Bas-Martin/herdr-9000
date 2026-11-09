@@ -54,14 +54,18 @@ pub(super) fn render_settings_overlay(
     }
     let compact = inner.height < 8;
     let border_controls = inner.height < 4;
-    let title = border_controls.then(|| format!(" {} · settings", settings.section.label()));
+    let title = if border_controls {
+        settings.section.label()
+    } else {
+        " settings"
+    };
 
     put_text(
         buffer,
         inner.x,
         if border_controls { popup.y } else { inner.y },
         inner.width,
-        title.as_deref().unwrap_or(" settings"),
+        title,
         Style::default()
             .fg(palette.text)
             .bg(palette.panel_bg)
