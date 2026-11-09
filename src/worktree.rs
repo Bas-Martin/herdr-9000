@@ -889,21 +889,11 @@ mod tests {
 
     #[test]
     fn parses_git_worktree_list_porcelain() {
-        let output = "\
-worktree /repo/main
-HEAD abc
-branch refs/heads/main
-
-worktree /repo/issue
-HEAD def
-branch refs/heads/worktree/issue
-
-worktree /repo/detached
-HEAD fed
-detached
-prunable stale
-
-";
+        let output = concat!(
+            "worktree /repo/main\0HEAD abc\0branch refs/heads/main\0\0",
+            "worktree /repo/issue\nbranch\0HEAD def\0branch refs/heads/worktree/issue\0\0",
+            "worktree /repo/detached\0HEAD fed\0detached\0prunable stale\0\0",
+        );
 
         assert_eq!(
             parse_worktree_list_porcelain(output),
@@ -916,7 +906,7 @@ prunable stale
                     is_prunable: false,
                 },
                 ExistingWorktree {
-                    path: PathBuf::from("/repo/issue"),
+                    path: PathBuf::from("/repo/issue\nbranch"),
                     branch: Some("worktree/issue".into()),
                     is_bare: false,
                     is_detached: false,

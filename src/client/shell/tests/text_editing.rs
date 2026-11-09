@@ -28,6 +28,7 @@ fn shell(field: usize) -> ClientShellState {
                 &mut ClientShellInput::default(),
             );
             if let Some(ClientShellOverlay::WorktreeCreate(create)) = state.overlay.as_mut() {
+                create.task_name = "feature".into();
                 create.field = ClientWorktreeCreateField::Branch;
                 create.branch_overridden = true;
             }
