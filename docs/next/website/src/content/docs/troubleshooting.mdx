@@ -109,7 +109,7 @@ First confirm that normal OpenSSH works with `ssh <host>`. For a passphrase-prot
 
 ## Source builds fail downloading Wuffs dependencies
 
-Zig's HTTP client can report `HttpConnectionClosing` or `Unexpected` while downloading Wuffs archives. CI downloads these archives with `curl`, imports them with `zig fetch`, and compares the computed hashes with the unchanged vendor pins. TLS and checksum verification remain enabled.
+Zig's HTTP client can report `HttpConnectionClosing` or `Unexpected` while downloading Wuffs archives from `deps.files.ghostty.org`. CI downloads those archives with `curl`, imports them with `zig fetch`, and compares the computed hashes with the unchanged vendor pins. Other dependency hosts retain Zig's normal fetching. TLS and checksum verification remain enabled.
 
 From a repository checkout with Zig 0.16.0 and `curl` on PATH, set `ZIG_GLOBAL_CACHE_DIR` to the absolute cache directory used by the subsequent build, then run `python3 scripts/prefetch_wuffs_dependencies.py` (`python` on Windows). The helper also honors the existing `ZIG` executable override. Use the same cache environment when running Cargo.
 

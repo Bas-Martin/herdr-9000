@@ -23,6 +23,8 @@ def main() -> None:
         parsed = urlsplit(url)
         if parsed.scheme != "https":
             raise RuntimeError(f"Expected an HTTPS dependency URL: {url}")
+        if parsed.hostname != "deps.files.ghostty.org":
+            continue
         if (cache / "p" / f"{expected}.tar.gz").is_file():
             continue
         print(f"Prefetching {url}", flush=True)

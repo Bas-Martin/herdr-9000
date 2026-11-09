@@ -109,7 +109,7 @@ OS または外側のターミナルが Herdr に届く前にキーを処理し�
 
 ## ソースビルドで Wuffs 依存関係のダウンロードに失敗する
 
-Zig の HTTP クライアントは、Wuffs アーカイブの取得時に `HttpConnectionClosing` や `Unexpected` を報告することがあります。CI は `curl` で取得し、`zig fetch` で取り込んで、計算されたハッシュを変更していない vendor の固定値と比較します。TLS とチェックサムの検証は無効にしません。
+Zig の HTTP クライアントは、`deps.files.ghostty.org` から Wuffs アーカイブを取得するときに `HttpConnectionClosing` や `Unexpected` を報告することがあります。CI はそのアーカイブを `curl` で取得し、`zig fetch` で取り込んで、計算されたハッシュを変更していない vendor の固定値と比較します。ほかのホストの依存関係は Zig が通常どおり取得します。TLS とチェックサムの検証は無効にしません。
 
 Zig 0.16.0 と `curl` が PATH にあるリポジトリのチェックアウトで、`ZIG_GLOBAL_CACHE_DIR` に後続のビルドで使う絶対キャッシュパスを設定し、`python3 scripts/prefetch_wuffs_dependencies.py`（Windows では `python`）を実行してください。既存の `ZIG` 実行ファイル指定にも対応します。Cargo の実行時も同じキャッシュ環境を使ってください。
 
