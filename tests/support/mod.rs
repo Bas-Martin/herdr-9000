@@ -69,6 +69,11 @@ pub fn unregister_spawned_herdr_pid(pid: Option<u32>) {
 
 pub fn register_runtime_dir(path: &Path) {
     ensure_cleanup_hooks();
+    let mut runtime_dirs = runtime_dir_registry_lock();
+    // Rewriting a live marker can make the watchdog mistake its owner for dead.
+    if runtime_dirs.contains(path) {
+        return;
+    }
 
     let _ = fs::create_dir_all(path);
     let _ = fs::write(
@@ -76,7 +81,6 @@ pub fn register_runtime_dir(path: &Path) {
         std::process::id().to_string(),
     );
 
-    let mut runtime_dirs = runtime_dir_registry_lock();
     runtime_dirs.insert(path.to_path_buf());
 }
 
