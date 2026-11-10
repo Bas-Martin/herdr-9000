@@ -395,6 +395,9 @@ impl App {
         api_rx: tokio::sync::mpsc::UnboundedReceiver<crate::api::ApiRequestMessage>,
         event_hub: crate::api::EventHub,
     ) -> std::io::Result<Self> {
+        let projects = crate::persist::load_projects()?;
+        let tasks = crate::persist::load_tasks()?;
+
         let prefix_keys = config.prefix_keys();
         crate::kitty_graphics::set_enabled(config.kitty_graphics_enabled());
         let (event_tx, event_rx) = mpsc::channel::<AppEvent>(APP_EVENT_CHANNEL_CAPACITY);
@@ -461,8 +464,6 @@ impl App {
             (Vec::new(), None, 0)
         };
 
-        let projects = crate::persist::load_projects();
-        let tasks = crate::persist::load_tasks();
         let resources = crate::persist::load_resources().unwrap_or_else(|err| {
             tracing::warn!(error = %err, "failed to load resource library");
             crate::resource::ResourceRegistry::default()

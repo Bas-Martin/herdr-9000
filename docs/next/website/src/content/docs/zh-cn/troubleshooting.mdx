@@ -107,6 +107,10 @@ herdr
 
 先用 `ssh <host>` 确认普通 OpenSSH 连接正常。若在非交互 shell、CI 或移动终端中使用带密码的密钥，请在远程连接前把密钥载入 `ssh-agent`。见[持久化和远程访问](/zh-cn/docs/persistence-remote/#remote-attach-over-ssh)。
 
+## 启动时无法读取项目或任务注册表
+
+如果 `projects.json` 或 `tasks.json` 无法读取或解析，Herdr 会在恢复窗格或保存会话与注册表数据之前拒绝启动，不会用空注册表替换原文件。请先保留原文件副本，再修复权限或 JSON，或恢复已知正常的备份后重试。只有注册表文件不存在时才会初始化为空。
+
 ## 源码构建下载 Wuffs 依赖失败
 
 Zig 的 HTTP 客户端从 `deps.files.ghostty.org` 下载 Wuffs 压缩包时可能报告 `HttpConnectionClosing` 或 `Unexpected`。CI 使用 `curl` 下载这些压缩包，再通过 `zig fetch` 导入，并将计算出的哈希与未修改的 vendor 固定值比较。其他主机的依赖仍由 Zig 正常获取。TLS 和校验和验证始终保持启用。

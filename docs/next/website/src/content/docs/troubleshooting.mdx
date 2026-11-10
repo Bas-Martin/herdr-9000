@@ -107,6 +107,10 @@ The operating system or outer terminal may consume the chord before Herdr receiv
 
 First confirm that normal OpenSSH works with `ssh <host>`. For a passphrase-protected key in a non-interactive shell, CI job, or mobile terminal, load the key into `ssh-agent` before starting remote attach. See [Persistence and remote access](/docs/persistence-remote/#remote-attach-over-ssh).
 
+## Startup reports an unreadable project or task registry
+
+If `projects.json` or `tasks.json` cannot be read or parsed, Herdr refuses startup before restoring panes or saving session and registry data. It does not replace the original with an empty registry. Keep a copy of the original, then repair its permissions or JSON, or restore a known-good backup before retrying. Only a missing registry initializes empty.
+
 ## Source builds fail downloading Wuffs dependencies
 
 Zig's HTTP client can report `HttpConnectionClosing` or `Unexpected` while downloading Wuffs archives from `deps.files.ghostty.org`. CI downloads those archives with `curl`, imports them with `zig fetch`, and compares the computed hashes with the unchanged vendor pins. Other dependency hosts retain Zig's normal fetching. TLS and checksum verification remain enabled.
