@@ -15,7 +15,9 @@ def main() -> None:
 
     for filename in ("projects.json", "tasks.json"):
         for failure in ("parse", "read"):
-            with tempfile.TemporaryDirectory(prefix="herdr-registry-protection-") as temporary:
+            with tempfile.TemporaryDirectory(
+                prefix="herdr-registry-", dir=os.environ.get("RUNNER_TEMP")
+            ) as temporary:
                 root = Path(temporary)
                 environment = {
                     key: value for key, value in os.environ.items() if not key.startswith("HERDR_")
