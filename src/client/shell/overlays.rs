@@ -254,7 +254,7 @@ fn panel(
     if a.width < 2 || a.height < 2 {
         return None;
     }
-    let background = Style::default().bg(bg).remove_modifier(Modifier::DIM);
+    let background = Style::reset().bg(bg);
     let border = Style::default().fg(c).bg(bg).remove_modifier(Modifier::DIM);
     for y in a.y..a.bottom() {
         for x in a.x..a.right() {
