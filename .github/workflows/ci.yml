@@ -198,6 +198,9 @@ jobs:
           $env:CARGO_INCREMENTAL = "1"
           just check
 
+      - name: Check registry startup protection
+        run: python scripts/check_registry_protection.py target/debug/herdr${{ runner.os == 'Windows' && '.exe' || '' }} herdr-dev
+
       - name: Smoke ConPTY pane
         if: matrix.kind == 'windows'
         shell: pwsh
@@ -224,11 +227,15 @@ jobs:
   windows-conpty-package:
     name: Windows ConPTY package
     runs-on: windows-2022
-    timeout-minutes: 25
+    timeout-minutes: 45
+    env:
+      HERDR_BUILD_CHANNEL: custom
+      HERDR_BUILD_ID: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Install Rust
@@ -282,7 +289,7 @@ jobs:
         run: python scripts/prefetch_wuffs_dependencies.py
 
       - name: Build Herdr
-        run: cargo build --locked --target x86_64-pc-windows-msvc
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
 
       - name: Save Zig build cache
         if: env.SAVE_CACHES == 'true'
@@ -296,7 +303,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           Remove-Item Env:HERDR_SOCKET_PATH, Env:HERDR_CLIENT_SOCKET_PATH -ErrorAction SilentlyContinue
-          $exe = Join-Path $PWD "target\x86_64-pc-windows-msvc\debug\herdr.exe"
+          $exe = Join-Path $PWD "target\x86_64-pc-windows-msvc\release\herdr.exe"
           $bundle = Join-Path (Split-Path -Parent $exe) "conpty"
           New-Item -ItemType Directory -Force -Path (Join-Path $bundle "x64"), (Join-Path $bundle "arm64") | Out-Null
           Set-Content -LiteralPath (Join-Path $bundle "herdr-conpty.json") -Value "{}" -Encoding ascii
@@ -336,7 +343,7 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP "herdr-windows-x86_64"
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           .\scripts\package_windows_conpty.ps1 `
-            -HerdrExe target\x86_64-pc-windows-msvc\debug\herdr.exe `
+            -HerdrExe target\x86_64-pc-windows-msvc\release\herdr.exe `
             -PackagePath $package `
             -StageDir $stage `
             -OutputPath artifacts\herdr-windows-x86_64.zip
@@ -362,3 +369,51 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Windows PowerShell installer test failed with exit code $LASTEXITCODE"
           }
+
+      - name: Package and install exact-source npm candidate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          node scripts/package_npm.js $env:HERDR_CONPTY_PACKAGE_DIR artifacts
+          if ($LASTEXITCODE -ne 0) { throw "npm packaging failed" }
+          $tarball = @(Get-ChildItem artifacts -Filter *.tgz)
+          if ($tarball.Count -ne 1) { throw "Expected exactly one npm tarball" }
+          $prefix = Join-Path $env:RUNNER_TEMP "herdr-npm-install"
+          npm install -g --prefix $prefix $tarball[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+          $baseVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version.Split("-")[0]
+          $expectedVersion = "herdr $baseVersion-custom.$env:HERDR_BUILD_ID"
+          $version = & (Join-Path $prefix "herdr9000.cmd") --version
+          if ($LASTEXITCODE -ne 0 -or $version -cne $expectedVersion) {
+            throw "Installed npm candidate does not match PR head"
+          }
+          $bin = Join-Path $prefix "node_modules\herdr-9000\packaging\npm\bin"
+          $exe = Join-Path $bin "runtime\herdr.exe"
+          $original = [System.IO.File]::ReadAllBytes($exe)
+          try {
+            $changed = New-Object byte[] ($original.Length + 1)
+            [Array]::Copy($original, $changed, $original.Length)
+            [System.IO.File]::WriteAllBytes($exe, $changed)
+            $changedVersion = & $exe --version
+            if ($LASTEXITCODE -ne 0 -or $changedVersion -cne $expectedVersion) {
+              throw "Changed runtime must remain executable for the integrity check"
+            }
+            & node (Join-Path $bin "postinstall.js")
+            if ($LASTEXITCODE -eq 0) {
+              throw "Postinstall accepted a changed existing runtime"
+            }
+          } finally {
+            [System.IO.File]::WriteAllBytes($exe, $original)
+          }
+          & node (Join-Path $bin "postinstall.js")
+          if ($LASTEXITCODE -ne 0) { throw "Restored runtime failed verification" }
+
+      - name: Upload exact-source Windows candidates
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: herdr-windows-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            artifacts/*.tgz
+            artifacts/herdr-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 7

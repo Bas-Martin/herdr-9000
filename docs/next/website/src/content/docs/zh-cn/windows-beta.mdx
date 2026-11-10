@@ -7,6 +7,21 @@ Windows 原生支持已正式发布。
 
 Windows 上的 Herdr 使用 ConPTY 和 Windows 的进程/运行时行为,而不是 Herdr 最初围绕构建的 Unix PTY 模型。大多数核心工作流已受支持,但部分能力与 Linux/macOS 不同或取决于平台。随着这些剩余差距逐步缩小,Windows 可能会收到更多平台专用修复。
 
+## Herdr 9000 候选版（Windows x64）
+
+对于此分支，请从候选提交成功的 CI 运行中下载 `herdr-windows-<完整提交 SHA>` 构件，并取出其中的 `.tgz`。安装 Node.js 18 或更新版本后，安装下载的文件（请替换下列文件名）：
+
+```powershell
+npm install -g .\herdr-9000-0.9.5-9000.1.git.<full-commit-SHA>.tgz
+herdr9000 --version
+```
+
+输出必须为 `herdr 0.9.5-custom.<完整提交 SHA>`，并与候选提交和构件名称一致。tarball 包含可执行文件和固定版本的 ConPTY 文件；安装时即使运行时已存在，也会验证每个运行时文件的 SHA-256 和原生构建身份。文件缺失、被修改或过期都会导致安装失败，不会回退下载旧版本。
+
+`npm install -g herdr-9000` 仍会选择注册表中较旧的已发布版本，而非此 CI 候选版。下文的 upstream 安装器和 `herdr update` 与此分支的 npm 候选版不同，不会安装该候选版。此候选版并未确立 Windows 升级时的进程保留保证，也未验证完整数据迁移；试用前请备份数据。
+
+## Upstream Windows 安装
+
 使用 PowerShell 在 Windows 上原生安装 Herdr:
 
 ```powershell

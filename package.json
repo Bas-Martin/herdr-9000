@@ -1,6 +1,6 @@
 {
   "name": "herdr-9000",
-  "version": "0.8.2-9000.1",
+  "version": "0.9.5-9000.1",
   "description": "Herdr 9000 fork with the persistent project registry",
   "license": "Apache-2.0",
   "repository": {

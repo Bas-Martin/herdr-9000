@@ -1,62 +1,65 @@
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
+const { createHash } = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
-const packageRoot = path.resolve(__dirname, "..");
-const runtimeDirectory = path.join(packageRoot, "bin", "runtime");
-const executable = path.join(runtimeDirectory, "herdr.exe");
-const releaseAsset = "https://github.com/Bas-Martin/herdr-9000/releases/download/v0.8.2-herdr9000.1/herdr-windows-x86_64.zip";
-
-if (process.platform !== "win32" || process.arch !== "x64") {
-  throw new Error("herdr-9000 currently supports Windows x64 only");
+function runtimeHashes(directory, prefix = "") {
+  const hashes = Object.create(null);
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const name = prefix + entry.name;
+    if (!/^[A-Za-z0-9_.\/-]+$/.test(name)) {
+      throw new Error(`invalid runtime path: ${name}`);
+    }
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      Object.assign(hashes, runtimeHashes(file, `${name}/`));
+    } else if (entry.isFile()) {
+      hashes[name] = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+    } else {
+      throw new Error(`runtime must contain only regular files: ${name}`);
+    }
+  }
+  return hashes;
 }
 
-if (fs.existsSync(executable)) {
-  process.exit(0);
-}
-
-function quotePowerShell(value) {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-async function install() {
-  fs.mkdirSync(runtimeDirectory, { recursive: true });
-  const zipPath = path.join(os.tmpdir(), `herdr-9000-${process.pid}.zip`);
-  const extractDirectory = path.join(os.tmpdir(), `herdr-9000-${process.pid}`);
-
-  try {
-    const response = await fetch(releaseAsset);
-    if (!response.ok) {
-      throw new Error(`download failed with HTTP ${response.status}`);
-    }
-    fs.writeFileSync(zipPath, Buffer.from(await response.arrayBuffer()));
-
-    const command = [
-      "Expand-Archive",
-      "-LiteralPath", quotePowerShell(zipPath),
-      "-DestinationPath", quotePowerShell(extractDirectory),
-      "-Force",
-    ].join(" ");
-    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], {
-      stdio: "inherit",
-      windowsHide: true,
-    });
-    if (result.status !== 0) {
-      throw new Error(`archive extraction failed with exit code ${result.status}`);
-    }
-
-    fs.cpSync(extractDirectory, runtimeDirectory, { recursive: true });
-    if (!fs.existsSync(executable)) {
-      throw new Error("downloaded archive does not contain herdr.exe");
-    }
-  } finally {
-    fs.rmSync(zipPath, { force: true });
-    fs.rmSync(extractDirectory, { recursive: true, force: true });
+function verifyRuntime(directory, manifest, packageVersion) {
+  if (process.platform !== "win32" || process.arch !== "x64") {
+    throw new Error("herdr-9000 currently supports Windows x64 only");
+  }
+  const baseVersion = packageVersion.split("-")[0];
+  if (!/^[0-9a-f]{40}$/.test(manifest.sourceCommit) ||
+      manifest.npmPackageVersion !== packageVersion ||
+      !packageVersion.endsWith(`.git.${manifest.sourceCommit}`) ||
+      manifest.binaryVersion !== `herdr ${baseVersion}-custom.${manifest.sourceCommit}`) {
+    throw new Error("bundled runtime build identity mismatch");
+  }
+  const actual = runtimeHashes(directory);
+  const expected = manifest.files;
+  const required = ["herdr.exe", "conpty/herdr-conpty.json", "conpty/conpty.dll",
+    "conpty/x64/OpenConsole.exe", "conpty/arm64/OpenConsole.exe"];
+  if (!expected || required.some((name) => !Object.hasOwn(expected, name)) ||
+      Object.keys(actual).length !== Object.keys(expected).length ||
+      Object.entries(actual).some(([name, hash]) => expected[name] !== hash)) {
+    throw new Error("bundled runtime SHA-256 mismatch (missing, changed, or unexpected file)");
+  }
+  // Hash every file before allowing any native code to execute.
+  const result = spawnSync(path.join(directory, "herdr.exe"), ["--version"], {
+    encoding: "utf8", windowsHide: true, timeout: 30000,
+  });
+  if (result.error || result.status !== 0 || result.stdout.trim() !== manifest.binaryVersion) {
+    throw new Error("bundled runtime --version does not match expected build identity");
   }
 }
 
-install().catch((error) => {
-  console.error(`herdr-9000 installation failed: ${error.message}`);
-  process.exit(1);
-});
+if (require.main === module) {
+  try {
+    const metadata = require("../../../package.json");
+    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "runtime-manifest.json"), "utf8"));
+    verifyRuntime(path.join(__dirname, "runtime"), manifest, metadata.version);
+  } catch (error) {
+    console.error(`herdr-9000 installation failed: ${error.message}`);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { runtimeHashes, verifyRuntime };

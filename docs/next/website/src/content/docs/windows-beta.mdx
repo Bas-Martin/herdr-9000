@@ -7,6 +7,21 @@ Native Windows support is generally available.
 
 Herdr on Windows uses ConPTY and Windows process/runtime behavior instead of the Unix PTY model Herdr was originally built around. Most core workflows are supported, but some capabilities differ from Linux and macOS or remain platform-dependent. Windows may receive more platform-specific fixes as those remaining gaps close.
 
+## Herdr 9000 candidate (Windows x64)
+
+For this fork, download the `herdr-windows-<full commit SHA>` artifact from the candidate's successful CI run and extract its `.tgz`. With Node.js 18 or newer installed, install that downloaded file (replace the filename below):
+
+```powershell
+npm install -g .\herdr-9000-0.9.5-9000.1.git.<full-commit-SHA>.tgz
+herdr9000 --version
+```
+
+The output must be `herdr 0.9.5-custom.<full commit SHA>` matching the candidate commit and artifact name. The tarball bundles the executable and pinned ConPTY files; installation verifies every runtime file's SHA-256 and the native build identity, including when a runtime already exists. Missing, changed, or stale files fail installation without a download fallback.
+
+`npm install -g herdr-9000` still selects the registry's older published version, not this CI candidate. The upstream installers and `herdr update` described below are separate from this fork's npm candidate and do not install it. This candidate does not establish Windows process preservation across upgrades or validated full-data migration; back up data before trying it.
+
+## Upstream Windows installation
+
 Install Herdr natively on Windows with PowerShell:
 
 ```powershell
