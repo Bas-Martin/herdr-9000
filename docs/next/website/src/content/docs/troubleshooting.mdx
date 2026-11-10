@@ -12,6 +12,10 @@ herdr status
 
 Also record your operating system, outer terminal name and version, whether the session is local or remote, and whether tmux is involved.
 
+## Todo strikethrough lines show through Settings
+
+Older clients can retain terminal text styling when drawing Settings and other dialogs. After updating to a build with the dialog-style reset fix, reopen the client; a server restart is not needed.
+
 ## The CJK IME window is misplaced or the cursor flickers on Windows
 
 Herdr defaults to a cell-drawn cursor on native Windows and WSL because native cursors can flicker, jump, or show stale positions while ConPTY-based multiplexers repaint the screen. A cell-drawn cursor cannot provide the native cursor anchor used by Korean, Japanese, and Chinese IME composition UI.
