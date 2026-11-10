@@ -61,7 +61,7 @@ map alt+right send_text all \x1bf
 
 ## Herdr 已更新，但运行中的会话仍是旧版本
 
-更新二进制文件不一定会替换已经运行且兼容的服务器。先检查 `herdr status`。要启动更新后的服务器，请停止会话并重新启动 Herdr:
+更新二进制文件不会替换正在运行的兼容服务器。重新打开 Herdr 即可使用更新后的客户端。只有还需要本次发行的服务器功能时，才先检查 `herdr status`，然后停止会话并重新启动 Herdr:
 
 ```bash
 herdr server stop
@@ -78,7 +78,7 @@ herdr
 launchctl managername
 ```
 
-如果输出为 `Background`，请停止服务器，然后从普通 GUI 终端重新启动 Herdr:
+自动启动的 macOS 服务器显示 `Background` 是正常的，不能仅凭此判断钥匙串访问有问题。如果钥匙串访问失败，且服务器是通过 SSH 或后台任务启动的，请停止服务器，然后从普通 GUI 终端重新启动 Herdr:
 
 ```bash
 herdr server stop
@@ -86,6 +86,14 @@ herdr
 ```
 
 停止服务器会结束窗格进程。Herdr 窗格会继承长期运行服务器的 macOS 启动上下文，因此通过 SSH 或后台任务启动的服务器可能无法访问交互式钥匙串服务。详情见 [Herdr issue #966](https://github.com/herdrdev/herdr/issues/966)。
+
+## macOS 注销后 SSH 或 DNS 失败
+
+自动启动的 macOS 服务器使用用户级服务上下文，避免注销后窗格与 macOS 服务的连接失效。显式运行 `herdr server` 时仍会保留调用方的上下文。
+
+旧服务器可能在注销后继续运行，但无法查询用户信息或解析 DNS。症状包括 `No user exists for uid 501`、`Could not get manager name.` 和 `curl: (6) Could not resolve host`。重新登录不能修复该服务器。请停止受影响的会话，然后从新登录会话的 GUI 终端启动 Herdr。这会结束正在运行的窗格进程，但会恢复保存的会话布局。实时移交会保留源服务器的服务上下文和现有窗格进程。因此，旧服务器需要完全重启会话才能应用此修复；移交无法修复继承的上下文。
+
+如果新启动的服务器仍出现此问题，请在 `herdr-server.log` 中查找 `could not select persistent user service context`。所需的 macOS API 不可用时，Herdr 会保留继承的上下文。详情见 [Herdr issue #4100](https://github.com/herdrdev/herdr/issues/4100)。
 
 ## 找不到 `herdr` 命令
 
@@ -98,6 +106,16 @@ herdr
 ## 远程连接无法认证
 
 先用 `ssh <host>` 确认普通 OpenSSH 连接正常。若在非交互 shell、CI 或移动终端中使用带密码的密钥，请在远程连接前把密钥载入 `ssh-agent`。见[持久化和远程访问](/zh-cn/docs/persistence-remote/#remote-attach-over-ssh)。
+
+## 启动时无法读取项目或任务注册表
+
+如果 `projects.json` 或 `tasks.json` 无法读取或解析，Herdr 会在恢复窗格或保存会话与注册表数据之前拒绝启动，不会用空注册表替换原文件。请先保留原文件副本，再修复权限或 JSON，或恢复已知正常的备份后重试。只有注册表文件不存在时才会初始化为空。
+
+## 源码构建下载 Wuffs 依赖失败
+
+Zig 的 HTTP 客户端从 `deps.files.ghostty.org` 下载 Wuffs 压缩包时可能报告 `HttpConnectionClosing` 或 `Unexpected`。CI 使用 `curl` 下载这些压缩包，再通过 `zig fetch` 导入，并将计算出的哈希与未修改的 vendor 固定值比较。其他主机的依赖仍由 Zig 正常获取。TLS 和校验和验证始终保持启用。
+
+在仓库检出目录中，确保 Zig 0.16.0 和 `curl` 位于 PATH，将 `ZIG_GLOBAL_CACHE_DIR` 设为后续构建使用的绝对缓存路径，然后运行 `python3 scripts/prefetch_wuffs_dependencies.py`（Windows 使用 `python`）。此工具也支持现有的 `ZIG` 可执行文件覆盖设置。运行 Cargo 时请使用相同的缓存环境。
 
 ## 查找诊断日志
 

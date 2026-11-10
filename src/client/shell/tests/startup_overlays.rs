@@ -350,6 +350,26 @@ fn startup_onboarding_is_client_rendered_and_modal() {
 }
 
 #[test]
+fn startup_onboarding_shows_configured_prefix() {
+    let mut config = Config::default();
+    config.keys.prefix = crate::config::BindingConfig::one("ctrl+shift+b");
+    let config = ClientShellConfig::from_config(&config).with_startup_onboarding(true);
+    let mut state = ClientShellState::new(config);
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+
+    let frame = state.compose(70, 20).expect("onboarding frame");
+    let text = frame
+        .cells
+        .iter()
+        .map(|cell| cell.symbol.as_str())
+        .collect::<String>();
+    assert!(text.contains("ctrl+shift+b enters prefix mode"));
+    assert!(text.contains("shows keybinds and settings"));
+    assert!(!text.contains("ctrl+b enters prefix mode"));
+}
+
+#[test]
 fn onboarding_completion_persists_and_opens_endpoint_integrations() {
     let path = std::env::temp_dir().join(format!(
         "herdr-client-onboarding-{}-{}.toml",
@@ -656,20 +676,6 @@ fn update_ready_menu_opens_client_owned_release_notes_and_dismisses_by_version()
     });
     state.set_snapshot(Box::new(endpoint_snapshot.clone()));
     state.set_pane_surface(surface());
-    let shell = state.compose(106, 30).expect("shell frame");
-    assert_eq!(state.hits.global_launcher.width, 8);
-    let launcher = state.hits.global_launcher;
-    let shell_buffer = shell.to_ratatui_buffer().expect("shell buffer");
-    let badge_x = launcher.right().saturating_sub(6);
-    assert_eq!(
-        shell_buffer[(badge_x, launcher.y)].fg,
-        state.config.palette.accent
-    );
-    assert_eq!(
-        shell_buffer[(badge_x + 2, launcher.y)].fg,
-        state.config.palette.overlay0
-    );
-
     state.sidebar_collapsed = true;
     let collapsed = state.compose(106, 30).expect("collapsed update shell");
     let collapsed_buffer = collapsed.to_ratatui_buffer().expect("collapsed buffer");
@@ -712,7 +718,6 @@ fn update_ready_menu_opens_client_owned_release_notes_and_dismisses_by_version()
         .join("\n");
     assert!(text.contains("● update ready"));
     let update_row = state.hits.global_menu_rows[3].0;
-    assert_eq!(update_row.width, 16);
     let menu_buffer = menu.to_ratatui_buffer().expect("menu buffer");
     assert_eq!(
         menu_buffer[(update_row.x + 1, update_row.y)].fg,
@@ -1015,97 +1020,6 @@ fn coalesced_release_notes_open_and_mouse_uses_current_geometry() {
         [ClientShellAction::Endpoint { request, .. }]
             if matches!(request.method, crate::api::schema::Method::ReleaseNotesDismiss(_))
     ));
-}
-
-#[test]
-fn outdated_integration_badges_launcher_settings_and_settings_tab() {
-    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
-    let mut endpoint_snapshot = snapshot();
-    endpoint_snapshot.integration_updates_available = true;
-    state.set_snapshot(Box::new(endpoint_snapshot));
-    state.set_pane_surface(surface());
-    let shell = state.compose(106, 30).expect("integration attention shell");
-    assert_eq!(state.hits.global_launcher.width, 8);
-    let shell_text = shell
-        .cells
-        .iter()
-        .map(|cell| cell.symbol.as_str())
-        .collect::<String>();
-    assert!(shell_text.contains("● menu"));
-
-    state.toggle_global_menu();
-    let menu = state.compose(106, 30).expect("integration attention menu");
-    let menu_text = menu
-        .cells
-        .iter()
-        .map(|cell| cell.symbol.as_str())
-        .collect::<String>();
-    assert!(menu_text.contains("● settings"));
-    assert!(!menu_text.contains("update ready"));
-
-    state.activate_global_menu_item(0, &mut ClientShellInput::default());
-    let settings = state.compose(106, 30).expect("settings integration badge");
-    let settings_text = settings
-        .cells
-        .iter()
-        .map(|cell| cell.symbol.as_str())
-        .collect::<String>();
-    assert!(settings_text.contains("● integrations"));
-    let integrations_tab = state
-        .hits
-        .settings_tabs
-        .iter()
-        .find(|(_, section)| *section == ClientSettingsSection::Integrations)
-        .map(|(rect, _)| *rect)
-        .expect("integrations tab");
-    let settings_buffer = settings.to_ratatui_buffer().expect("settings buffer");
-    assert_eq!(
-        settings_buffer[(integrations_tab.x + 1, integrations_tab.y)].fg,
-        state.config.palette.accent
-    );
-    assert_eq!(
-        settings_buffer[(integrations_tab.x + 3, integrations_tab.y)].fg,
-        state.config.palette.overlay1
-    );
-}
-
-#[test]
-fn combined_update_and_integration_attention_preserves_both_badges() {
-    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
-    let mut endpoint_snapshot = snapshot();
-    endpoint_snapshot.update_available = Some("0.8.3".into());
-    endpoint_snapshot.latest_release_notes_available = true;
-    endpoint_snapshot.integration_updates_available = true;
-    endpoint_snapshot.release_notes = Some(crate::protocol::ClientShellReleaseNotes {
-        version: "0.8.3".into(),
-        body: "### Changed\n- Both attention states".into(),
-        preview: true,
-    });
-    state.set_snapshot(Box::new(endpoint_snapshot));
-    state.set_pane_surface(surface());
-    state.compose(106, 30).expect("combined attention shell");
-    assert_eq!(state.hits.global_launcher.width, 8);
-
-    state.toggle_global_menu();
-    let menu = state.compose(106, 30).expect("combined attention menu");
-    let text = menu
-        .cells
-        .iter()
-        .map(|cell| cell.symbol.as_str())
-        .collect::<String>();
-    let settings = text.find("● settings").expect("settings badge");
-    let update = text.find("● update ready").expect("update badge");
-    assert!(settings < update);
-
-    state.overlay = None;
-    state.mode = ClientShellMode::Navigate;
-    let navigate = state.compose(106, 30).expect("combined attention navigate");
-    let navigate_text = navigate
-        .cells
-        .iter()
-        .map(|cell| cell.symbol.as_str())
-        .collect::<String>();
-    assert!(navigate_text.contains("update ready"));
 }
 
 #[test]

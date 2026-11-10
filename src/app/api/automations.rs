@@ -358,7 +358,10 @@ impl App {
                 if let Err(error) = crate::worktree::preserve_ignored_files(
                     &project.root_path,
                     &path,
-                    &project.preserve_patterns,
+                    self.state
+                        .projects
+                        .effective_preserve_patterns(Some(&project)),
+                    false,
                 ) {
                     run.status = AutomationRunStatus::Failed;
                     run.error = Some(error);

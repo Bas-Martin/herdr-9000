@@ -165,7 +165,7 @@ impl ClientShellState {
         outcome: &mut ClientShellInput,
     ) -> bool {
         if let Err(error) = crate::config::write_edit(edit) {
-            self.endpoint_error = Some(error);
+            self.set_endpoint_error(error);
             outcome.repaint = true;
             return false;
         }
@@ -298,13 +298,15 @@ impl ClientShellState {
                             integrations,
                         }) => {
                             settings.integrations = integrations;
-                            settings.selected = settings
-                                .selected
-                                .min(settings.integrations.len().saturating_sub(1));
+                            if settings.section == ClientSettingsSection::Integrations {
+                                settings.selected = settings
+                                    .selected
+                                    .min(settings.integrations.len().saturating_sub(1));
+                            }
                         }
                         Ok(_) => {
-                            self.endpoint_error = Some(
-                                "endpoint returned an unexpected integration list result".into(),
+                            self.set_endpoint_error(
+                                "endpoint returned an unexpected integration list result",
                             );
                         }
                         Err(_) => {}

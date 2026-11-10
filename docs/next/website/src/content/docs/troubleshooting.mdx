@@ -78,7 +78,7 @@ Check the server launch context from a Herdr pane:
 launchctl managername
 ```
 
-If it prints `Background`, stop the server and start Herdr again from a normal GUI terminal:
+`Background` is normal for automatically started macOS servers and does not by itself indicate a Keychain problem. If Keychain access fails and the server was started through SSH or a background job, stop it and start Herdr again from a normal GUI terminal:
 
 ```bash
 herdr server stop
@@ -86,6 +86,14 @@ herdr
 ```
 
 Stopping the server exits its pane processes. Herdr panes inherit the long-lived server's macOS launch context, so a server started through SSH or a background job may not have access to interactive Keychain services. See [Herdr issue #966](https://github.com/herdrdev/herdr/issues/966) for details.
+
+## SSH or DNS fails after macOS logout
+
+Automatically started macOS servers use a per-user service context so logging out does not leave their panes with a dead connection to macOS services. Explicit `herdr server` launches retain their caller's context.
+
+An older server can survive logout while losing user lookup and DNS. Symptoms include `No user exists for uid 501`, `Could not get manager name.`, and `curl: (6) Could not resolve host`. Logging back in does not repair that server. Stop the affected session and start Herdr from a GUI terminal in the new login. This ends live pane processes but restores the saved session layout. Live handoff preserves the source server's service context and existing pane processes. Older servers therefore need a full session restart to adopt this fix; handoff cannot repair their inherited context.
+
+If a newly started server still has this problem, check `herdr-server.log` for `could not select persistent user service context`. Herdr keeps the inherited context if the required macOS APIs are unavailable. See [Herdr issue #4100](https://github.com/herdrdev/herdr/issues/4100).
 
 ## The `herdr` command is not found
 
@@ -98,6 +106,16 @@ The operating system or outer terminal may consume the chord before Herdr receiv
 ## Remote attach cannot authenticate
 
 First confirm that normal OpenSSH works with `ssh <host>`. For a passphrase-protected key in a non-interactive shell, CI job, or mobile terminal, load the key into `ssh-agent` before starting remote attach. See [Persistence and remote access](/docs/persistence-remote/#remote-attach-over-ssh).
+
+## Startup reports an unreadable project or task registry
+
+If `projects.json` or `tasks.json` cannot be read or parsed, Herdr refuses startup before restoring panes or saving session and registry data. It does not replace the original with an empty registry. Keep a copy of the original, then repair its permissions or JSON, or restore a known-good backup before retrying. Only a missing registry initializes empty.
+
+## Source builds fail downloading Wuffs dependencies
+
+Zig's HTTP client can report `HttpConnectionClosing` or `Unexpected` while downloading Wuffs archives from `deps.files.ghostty.org`. CI downloads those archives with `curl`, imports them with `zig fetch`, and compares the computed hashes with the unchanged vendor pins. Other dependency hosts retain Zig's normal fetching. TLS and checksum verification remain enabled.
+
+From a repository checkout with Zig 0.16.0 and `curl` on PATH, set `ZIG_GLOBAL_CACHE_DIR` to the absolute cache directory used by the subsequent build, then run `python3 scripts/prefetch_wuffs_dependencies.py` (`python` on Windows). The helper also honors the existing `ZIG` executable override. Use the same cache environment when running Cargo.
 
 ## Find diagnostic logs
 

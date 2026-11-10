@@ -1,3 +1,4 @@
+use std::io;
 use std::path::PathBuf;
 
 use crate::task::{reserve_task_ids, TaskRegistry};
@@ -6,24 +7,25 @@ fn task_registry_path() -> PathBuf {
     crate::config::config_dir().join("tasks.json")
 }
 
-pub(crate) fn load() -> TaskRegistry {
+pub(crate) fn load() -> io::Result<TaskRegistry> {
     let path = task_registry_path();
     let registry = match std::fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str::<TaskRegistry>(&content) {
-            Ok(registry) => registry,
-            Err(err) => {
-                tracing::warn!(path = %path.display(), error = %err, "failed to parse task registry");
-                TaskRegistry::default()
-            }
-        },
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => TaskRegistry::default(),
+        Ok(content) => serde_json::from_str::<TaskRegistry>(&content).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("failed to parse task registry {}: {err}", path.display()),
+            )
+        })?,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => TaskRegistry::default(),
         Err(err) => {
-            tracing::warn!(path = %path.display(), error = %err, "failed to read task registry");
-            TaskRegistry::default()
+            return Err(io::Error::new(
+                err.kind(),
+                format!("failed to read task registry {}: {err}", path.display()),
+            ));
         }
     };
     reserve_task_ids(&registry);
-    registry
+    Ok(registry)
 }
 
 pub(crate) fn save(registry: &TaskRegistry) -> std::io::Result<()> {

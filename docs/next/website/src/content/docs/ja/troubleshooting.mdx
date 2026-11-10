@@ -61,7 +61,7 @@ map alt+right send_text all \x1bf
 
 ## Herdr を更新したのに実行中のセッションが古い
 
-バイナリを更新しても、互換性のある実行中サーバーは自動で置き換わらないことがあります。`herdr status` を確認してください。更新済みサーバーを起動するには、セッションを停止して Herdr を再起動します:
+バイナリを更新しても、互換性のある実行中サーバーは置き換わりません。Herdr を開き直せば更新済みクライアントを使えます。サーバー側の新機能も必要な場合だけ、`herdr status` で確認してからセッションを停止し、Herdr を再起動します:
 
 ```bash
 herdr server stop
@@ -78,7 +78,7 @@ Herdr のペインからサーバーの起動コンテキストを確認しま�
 launchctl managername
 ```
 
-`Background` と表示された場合は、サーバーを停止し、通常の GUI ターミナルから Herdr を再起動してください:
+自動起動された macOS サーバーでは `Background` は正常で、この表示だけでは Keychain の問題を意味しません。Keychain にアクセスできず、サーバーを SSH やバックグラウンドジョブから起動していた場合は、停止して通常の GUI ターミナルから Herdr を再起動してください:
 
 ```bash
 herdr server stop
@@ -86,6 +86,14 @@ herdr
 ```
 
 サーバーを停止するとペインのプロセスも終了します。Herdr のペインは長時間動作するサーバーの macOS 起動コンテキストを継承するため、SSH やバックグラウンドジョブから起動されたサーバーは対話型 Keychain サービスにアクセスできないことがあります。詳細は [Herdr issue #966](https://github.com/herdrdev/herdr/issues/966) を参照してください。
+
+## macOS のログアウト後に SSH や DNS が失敗する
+
+自動起動された macOS サーバーはユーザー単位のサービスコンテキストを使用するため、ログアウトしてもペインと macOS サービスの接続が無効になりません。明示的な `herdr server` 起動では、呼び出し元のコンテキストを維持します。
+
+古いサーバーはログアウト後も動作し続ける一方、ユーザー情報の検索や DNS が使えなくなることがあります。症状には `No user exists for uid 501`、`Could not get manager name.`、`curl: (6) Could not resolve host` などがあります。再ログインだけでは修復されません。対象セッションを停止し、新しいログインの GUI ターミナルから Herdr を起動してください。実行中のペインプロセスは終了しますが、保存されたセッション配置は復元されます。ライブハンドオフは元のサーバーのサービスコンテキストと既存のペインプロセスを維持します。そのため、古いサーバーにこの修正を適用するにはセッションの完全な再起動が必要です。ハンドオフでは継承したコンテキストを修復できません。
+
+新しく起動したサーバーでも問題が起きる場合は、`herdr-server.log` の `could not select persistent user service context` を確認してください。必要な macOS API が利用できない場合、Herdr は継承したコンテキストを維持します。[Herdr issue #4100](https://github.com/herdrdev/herdr/issues/4100) を参照してください。
 
 ## `herdr` コマンドが見つからない
 
@@ -98,6 +106,16 @@ OS または外側のターミナルが Herdr に届く前にキーを処理し�
 ## リモートアタッチで認証できない
 
 まず `ssh <host>` で通常の OpenSSH 接続が動作することを確認してください。非対話シェル、CI、モバイルターミナルでパスフレーズ付きキーを使う場合は、リモートアタッチの前にキーを `ssh-agent` へ読み込んでください。[永続化とリモートアクセス](/ja/docs/persistence-remote/#remote-attach-over-ssh)を参照してください。
+
+## 起動時にプロジェクトまたはタスクのレジストリを読み込めない
+
+`projects.json` または `tasks.json` を読み取れない、または解析できない場合、Herdr はペインの復元やセッション・レジストリの保存を始める前に起動を中止します。元のファイルを空のレジストリで置き換えません。元のファイルをコピーして保管し、権限や JSON を修復するか、正常なバックアップを復元してから再試行してください。ファイルが存在しない場合だけ空で初期化します。
+
+## ソースビルドで Wuffs 依存関係のダウンロードに失敗する
+
+Zig の HTTP クライアントは、`deps.files.ghostty.org` から Wuffs アーカイブを取得するときに `HttpConnectionClosing` や `Unexpected` を報告することがあります。CI はそのアーカイブを `curl` で取得し、`zig fetch` で取り込んで、計算されたハッシュを変更していない vendor の固定値と比較します。ほかのホストの依存関係は Zig が通常どおり取得します。TLS とチェックサムの検証は無効にしません。
+
+Zig 0.16.0 と `curl` が PATH にあるリポジトリのチェックアウトで、`ZIG_GLOBAL_CACHE_DIR` に後続のビルドで使う絶対キャッシュパスを設定し、`python3 scripts/prefetch_wuffs_dependencies.py`（Windows では `python`）を実行してください。既存の `ZIG` 実行ファイル指定にも対応します。Cargo の実行時も同じキャッシュ環境を使ってください。
 
 ## 診断ログを探す
 
