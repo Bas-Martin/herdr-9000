@@ -13,6 +13,24 @@
       ]
     },
     {
+      "id": "open_with",
+      "title": "Open With",
+      "keys": [
+        {
+          "key": "open_with.vscode",
+          "type": "string",
+          "default": "unset",
+          "description": "Full path to the VS Code executable. Empty or unset uses automatic detection. Manual paths take precedence and survive installation and updates."
+        },
+        {
+          "key": "open_with.visual_studio",
+          "type": "string",
+          "default": "unset",
+          "description": "Windows only: full path to devenv.exe. Empty or unset uses automatic detection. Manual paths take precedence and survive installation and updates."
+        }
+      ]
+    },
+    {
       "id": "server",
       "title": "Server",
       "keys": [

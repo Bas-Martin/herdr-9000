@@ -79,6 +79,7 @@ operations::define_operations! {
     WorkspaceCreate(WorkspaceCreateParams) => "workspace.create", true, true;
     WorkspaceList(EmptyParams) => "workspace.list", false, false;
     WorkspaceGet(WorkspaceTarget) => "workspace.get", false, false;
+    WorkspaceCheckoutGet(WorkspaceTarget) => "workspace.checkout.get", false, true;
     WorkspaceFocus(WorkspaceTarget) => "workspace.focus", true, true;
     WorkspaceRename(WorkspaceRenameParams) => "workspace.rename", true, true;
     WorkspaceMove(WorkspaceMoveParams) => "workspace.move", true, true;
