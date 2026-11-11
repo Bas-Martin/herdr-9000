@@ -634,6 +634,10 @@ impl ClientShellState {
             }
         }
         match pending.kind {
+            PendingEndpointKind::OpenWorktreeWith { application } => {
+                self.complete_open_worktree_with(application, result);
+                return (true, Vec::new());
+            }
             PendingEndpointKind::TaskList { endpoint_id } => {
                 return self.handle_task_list_result(endpoint_id, result)
             }

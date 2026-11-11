@@ -33,6 +33,20 @@ pub(super) fn integration_needs_install(info: &crate::api::schema::IntegrationIn
 
 impl ClientShellState {
     pub(super) fn open_settings_overlay(&mut self) {
+        let (open_with, open_with_error) = match crate::config::load_live_config() {
+            Ok(loaded) => {
+                let error = loaded
+                    .invalid_sections
+                    .iter()
+                    .any(|section| section == "open_with")
+                    .then(|| loaded.diagnostics.join("; "));
+                (loaded.config.open_with, error)
+            }
+            Err(errors) => (
+                crate::config::OpenWithConfig::default(),
+                Some(errors.join("; ")),
+            ),
+        };
         self.overlay = Some(ClientShellOverlay::Settings(ClientSettingsOverlay {
             section: ClientSettingsSection::Theme,
             selected: theme_index(&self.config.theme_name),
@@ -42,6 +56,12 @@ impl ClientShellState {
             integration_messages: Vec::new(),
             loading_integrations: false,
             installing_integrations: false,
+            vscode_path: TextEditor::new(open_with.vscode.as_deref().unwrap_or_default(), false),
+            visual_studio_path: TextEditor::new(
+                open_with.visual_studio.as_deref().unwrap_or_default(),
+                false,
+            ),
+            open_with_error,
         }));
     }
 
@@ -51,7 +71,7 @@ impl ClientShellState {
             ClientSettingsSection::Indicators => indicator_index(self.config.status_indicators),
             ClientSettingsSection::Sound => usize::from(!self.config.sound_enabled),
             ClientSettingsSection::Toast => toast_index(self.config.toast_delivery),
-            ClientSettingsSection::Integrations => 0,
+            ClientSettingsSection::Integrations | ClientSettingsSection::OpenWith => 0,
         }
     }
 
@@ -100,6 +120,7 @@ impl ClientShellState {
                 ClientSettingsSection::Indicators | ClientSettingsSection::Sound => 2,
                 ClientSettingsSection::Toast => 4,
                 ClientSettingsSection::Integrations => settings.integrations.len(),
+                ClientSettingsSection::OpenWith => 2,
             },
             _ => 0,
         }
@@ -223,6 +244,24 @@ impl ClientShellState {
                 );
             }
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
+            ClientSettingsSection::OpenWith => {
+                match crate::config::write_edit(crate::config::ConfigEdit::OpenWith {
+                    vscode: settings.vscode_path.as_str(),
+                    visual_studio: settings.visual_studio_path.as_str(),
+                }) {
+                    Ok(()) => {
+                        self.reload_client_config();
+                        self.overlay = None;
+                    }
+                    Err(error) => {
+                        if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut()
+                        {
+                            settings.open_with_error = Some(error);
+                        }
+                    }
+                }
+                outcome.repaint = true;
+            }
         }
     }
 
@@ -370,6 +409,41 @@ impl ClientShellState {
                 outcome.repaint = true;
             }
             return true;
+        }
+        if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() {
+            if settings.section == ClientSettingsSection::OpenWith {
+                match code {
+                    KeyCode::Tab if modifiers.is_empty() => {
+                        settings.selected = (settings.selected + 1) % 2;
+                    }
+                    KeyCode::BackTab => {
+                        settings.selected = (settings.selected + 1) % 2;
+                    }
+                    KeyCode::Up if modifiers.is_empty() => settings.selected = 0,
+                    KeyCode::Down if modifiers.is_empty() => settings.selected = 1,
+                    KeyCode::Enter if modifiers.is_empty() => {
+                        self.apply_settings_choice(outcome);
+                    }
+                    KeyCode::Left | KeyCode::Right if modifiers == KeyModifiers::ALT => {
+                        self.move_settings_section(
+                            if code == KeyCode::Left { -1 } else { 1 },
+                            outcome,
+                        );
+                    }
+                    _ => {
+                        let editor = if settings.selected == 0 {
+                            &mut settings.vscode_path
+                        } else {
+                            &mut settings.visual_studio_path
+                        };
+                        if editor.handle_key(key) == Some(true) {
+                            settings.open_with_error = None;
+                        }
+                    }
+                }
+                outcome.repaint = true;
+                return true;
+            }
         }
         if matches!(code, KeyCode::Tab | KeyCode::Right | KeyCode::Char('l'))
             && modifiers.is_empty()

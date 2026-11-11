@@ -144,6 +144,7 @@ pub(super) fn render_settings_overlay(
         inner.height.saturating_sub(content_offset + footer_rows),
     );
     let mut choice_hits = Vec::new();
+    let mut cursor = None;
     match settings.section {
         ClientSettingsSection::Theme => {
             let visible = usize::from(content.height);
@@ -214,6 +215,75 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Integrations => {
             render_integrations(buffer, content, settings, palette, &mut choice_hits);
         }
+        ClientSettingsSection::OpenWith => {
+            let base = Style::default().fg(palette.overlay0).bg(palette.panel_bg);
+            let hint_rows = u16::from(content.height >= 7);
+            let error_rows = u16::from(settings.open_with_error.is_some());
+            let field_height = content.height.saturating_sub(hint_rows + error_rows);
+            if hint_rows > 0 {
+                put_text(
+                    buffer,
+                    content.x,
+                    content.y,
+                    content.width,
+                    "Full executable paths; leave empty for automatic detection.",
+                    base,
+                );
+            }
+            for (index, label, editor) in [
+                (0, "VS Code executable", &settings.vscode_path),
+                (1, "Visual Studio executable", &settings.visual_studio_path),
+            ] {
+                let focused = settings.selected == index;
+                if field_height < 4 && !focused {
+                    continue;
+                }
+                let offset = if field_height >= 4 {
+                    index as u16 * 2
+                } else {
+                    0
+                };
+                let label_y = content.y.saturating_add(hint_rows + offset);
+                let show_label = field_height >= 2;
+                let input_y = label_y.saturating_add(u16::from(show_label));
+                if input_y >= content.bottom().saturating_sub(error_rows) {
+                    continue;
+                }
+                if show_label {
+                    put_text(buffer, content.x, label_y, content.width, label, base);
+                }
+                let input = Rect::new(content.x, input_y, content.width, 1);
+                let style = Style::default().fg(palette.text).bg(if focused {
+                    palette.surface1
+                } else {
+                    palette.surface0
+                });
+                buffer.set_style(input, style);
+                let field_cursor = text_editor::render(
+                    buffer,
+                    Rect::new(input.x + 1, input.y, input.width.saturating_sub(1), 1),
+                    editor,
+                    style,
+                );
+                if focused {
+                    cursor = field_cursor;
+                }
+                choice_hits.push((input, index));
+            }
+            if let Some(error) = settings.open_with_error.as_deref() {
+                let error_y = content.bottom().saturating_sub(1);
+                if error_y < content.bottom() {
+                    put_text(
+                        buffer,
+                        content.x,
+                        error_y,
+                        content.width,
+                        error,
+                        Style::default().fg(palette.red).bg(palette.panel_bg),
+                    );
+                }
+            }
+        }
     }
 
     let installable = settings
@@ -239,14 +309,22 @@ pub(super) fn render_settings_overlay(
         button(
             buffer,
             primary,
-            match (
-                settings.section == ClientSettingsSection::Integrations,
-                compact_buttons,
-            ) {
-                (true, true) => "install",
-                (false, true) => "apply",
-                (true, false) => " ↵ install ",
-                (false, false) => " ↵ apply ",
+            if settings.section == ClientSettingsSection::OpenWith {
+                if compact_buttons {
+                    "save"
+                } else {
+                    " ↵ save "
+                }
+            } else {
+                match (
+                    settings.section == ClientSettingsSection::Integrations,
+                    compact_buttons,
+                ) {
+                    (true, true) => "install",
+                    (false, true) => "apply",
+                    (true, false) => " ↵ install ",
+                    (false, false) => " ↵ apply ",
+                }
             },
             Style::default()
                 .fg(contrast(palette))
@@ -276,7 +354,11 @@ pub(super) fn render_settings_overlay(
             inner.x,
             inner.bottom().saturating_sub(2),
             inner.width,
-            " ↑↓ select  tab section",
+            if settings.section == ClientSettingsSection::OpenWith {
+                " tab/↑↓ field  alt+←→ section  enter save"
+            } else {
+                " ↑↓ select  tab section"
+            },
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),
         );
     }
@@ -288,6 +370,7 @@ pub(super) fn render_settings_overlay(
         settings_popup: popup,
         settings_tabs: tab_hits,
         settings_choices: choice_hits,
+        cursor,
         ..OverlayRender::default()
     })
 }

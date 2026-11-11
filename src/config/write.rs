@@ -4,6 +4,10 @@ pub(crate) enum ConfigEdit<'a> {
     StatusIndicators(super::StatusIndicatorStyle),
     Sound(bool),
     ToastDelivery(super::ToastDelivery),
+    OpenWith {
+        vscode: &'a str,
+        visual_studio: &'a str,
+    },
 }
 
 impl ConfigEdit<'_> {
@@ -13,11 +17,29 @@ impl ConfigEdit<'_> {
             Self::StatusIndicators(_) => "status indicators",
             Self::Sound(_) => "sound setting",
             Self::ToastDelivery(_) => "toast setting",
+            Self::OpenWith { .. } => "Open With settings",
         }
     }
 
     pub(crate) fn apply(self, content: &str) -> String {
         match self {
+            Self::OpenWith {
+                vscode,
+                visual_studio,
+            } => {
+                let content = super::upsert_section_value(
+                    content,
+                    "open_with",
+                    "vscode",
+                    &toml_edit::Value::from(vscode).to_string(),
+                );
+                super::upsert_section_value(
+                    &content,
+                    "open_with",
+                    "visual_studio",
+                    &toml_edit::Value::from(visual_studio).to_string(),
+                )
+            }
             Self::Theme(name) => {
                 let content =
                     super::upsert_section_value(content, "theme", "name", &format!("\"{name}\""));
