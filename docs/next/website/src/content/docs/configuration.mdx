@@ -126,6 +126,8 @@ visual_studio = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7
 
 Windows Explorer needs no executable setting. Missing applications, invalid executable paths, or launch errors are shown in Herdr.
 
+Saving supports TOML section comments and inline tables. Invalid TOML or a non-table `open_with` value produces an error without overwriting the configuration.
+
 ### Preserve local files in new worktrees
 
 When creating a worktree, Herdr copies matching ignored or untracked local files from the repository's main checkout into the new checkout, retaining their relative paths. Tracked destination files are never overwritten. No matches is fine; symlinks that escape the checkout boundary are not followed.
