@@ -6,6 +6,12 @@ impl ClientContextMenuOverlay {
 
         let item = |label, action| ClientContextMenuItem { label, action };
         match &self.target {
+            ClientContextMenuTarget::OpenWith { .. } => vec![
+                item("VS Code", Action::OpenVsCode),
+                item("Visual Studio", Action::OpenVisualStudio),
+                item("Windows Explorer", Action::OpenExplorer),
+                item("‹ Back", Action::Back),
+            ],
             ClientContextMenuTarget::Workspace { is_git: false, .. } => {
                 vec![
                     item("Rename", Action::Rename),
@@ -20,6 +26,7 @@ impl ClientContextMenuOverlay {
             } => vec![
                 item("Rename", Action::Rename),
                 item("Project settings", Action::ProjectSettings),
+                item("Open With ›", Action::OpenWith),
                 item("Close", Action::Close),
                 item("New worktree", Action::NewWorktree),
                 item("Open worktree...", Action::OpenWorktree),
@@ -30,6 +37,7 @@ impl ClientContextMenuOverlay {
             } => vec![
                 item("Rename", Action::Rename),
                 item("Project settings", Action::ProjectSettings),
+                item("Open With ›", Action::OpenWith),
                 item("Close", Action::Close),
                 item("Delete worktree checkout...", Action::RemoveWorktree),
             ],
@@ -41,6 +49,7 @@ impl ClientContextMenuOverlay {
             } => vec![
                 item("Rename", Action::Rename),
                 item("Project settings", Action::ProjectSettings),
+                item("Open With ›", Action::OpenWith),
                 item(
                     if *close_group { "Close group" } else { "Close" },
                     Action::Close,
@@ -198,7 +207,49 @@ impl ClientShellState {
             outcome.repaint = true;
             return;
         };
+        if action == ClientContextMenuAction::OpenWith {
+            self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+                target: match menu.target {
+                    ClientContextMenuTarget::Workspace { workspace_id, .. } => {
+                        ClientContextMenuTarget::OpenWith { workspace_id }
+                    }
+                    _ => return,
+                },
+                x: menu.x,
+                y: menu.y,
+                highlighted: 0,
+            }));
+            outcome.repaint = true;
+            return;
+        }
         match menu.target {
+            ClientContextMenuTarget::OpenWith { workspace_id } => match action {
+                ClientContextMenuAction::Back => {
+                    self.open_workspace_context_menu(workspace_id, menu.x, menu.y);
+                }
+                ClientContextMenuAction::OpenVsCode => {
+                    self.begin_open_worktree_with(
+                        workspace_id,
+                        crate::open_with::Application::VsCode,
+                        outcome,
+                    );
+                }
+                ClientContextMenuAction::OpenVisualStudio => {
+                    self.begin_open_worktree_with(
+                        workspace_id,
+                        crate::open_with::Application::VisualStudio,
+                        outcome,
+                    );
+                }
+                ClientContextMenuAction::OpenExplorer => {
+                    self.begin_open_worktree_with(
+                        workspace_id,
+                        crate::open_with::Application::Explorer,
+                        outcome,
+                    );
+                }
+                _ => {}
+            },
             ClientContextMenuTarget::Workspace {
                 workspace_id,
                 close_group,
@@ -287,6 +338,95 @@ impl ClientShellState {
             }
             _ => {}
         }
+    }
+
+    fn begin_open_worktree_with(
+        &mut self,
+        workspace_id: String,
+        application: crate::open_with::Application,
+        outcome: &mut ClientShellInput,
+    ) {
+        if !self.active_endpoint_id.is_local() {
+            self.set_endpoint_error("Open With is only available for local worktrees.");
+            return;
+        }
+        self.push_endpoint_method_with_kind(
+            crate::api::schema::Method::WorkspaceCheckoutGet(crate::api::schema::WorkspaceTarget {
+                workspace_id,
+            }),
+            PendingEndpointKind::OpenWorktreeWith { application },
+            outcome,
+        );
+    }
+
+    pub(super) fn complete_open_worktree_with(
+        &mut self,
+        application: crate::open_with::Application,
+        result: Result<crate::api::schema::ResponseResult, ClientShellEndpointError>,
+    ) {
+        let directory = match result {
+            Ok(crate::api::schema::ResponseResult::WorkspaceCheckout { path, .. }) => {
+                std::path::PathBuf::from(path)
+            }
+            Ok(_) => {
+                self.set_endpoint_error("Unable to resolve the selected worktree directory.");
+                return;
+            }
+            Err(error) => {
+                self.set_endpoint_error(error.message);
+                return;
+            }
+        };
+        if self.open_with_pending.is_some() {
+            self.set_endpoint_error("An Open With launch is already in progress.");
+            return;
+        }
+        let runtime = match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => runtime,
+            Err(error) => {
+                self.set_endpoint_error(format!("Cannot start Open With: {error}"));
+                return;
+            }
+        };
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.open_with_pending = Some(receiver);
+        runtime.spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let loaded =
+                    crate::config::load_live_config().map_err(|errors| errors.join("; "))?;
+                if loaded
+                    .invalid_sections
+                    .iter()
+                    .any(|section| section == "open_with")
+                {
+                    return Err(format!(
+                        "Invalid Settings → Open With configuration: {}",
+                        loaded.diagnostics.join("; ")
+                    ));
+                }
+                crate::open_with::launch(application, &directory, &loaded.config.open_with)
+            })
+            .await
+            .unwrap_or_else(|error| Err(format!("Cannot start Open With: {error}")));
+            let _ = sender.send(result);
+        });
+    }
+
+    pub(crate) fn tick_open_with(&mut self) -> bool {
+        let Some(receiver) = self.open_with_pending.as_mut() else {
+            return false;
+        };
+        let result = match receiver.try_recv() {
+            Ok(result) => result,
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => return false,
+            Err(error) => Err(format!("Cannot complete Open With launch: {error}")),
+        };
+        self.open_with_pending = None;
+        if let Err(error) = result {
+            self.set_endpoint_error(error);
+            return true;
+        }
+        false
     }
 
     fn activate_tab_context_action(

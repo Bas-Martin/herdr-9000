@@ -308,6 +308,13 @@ pub fn validated_sidebar_bounds(min: u16, max: u16) -> Option<(u16, u16)> {
     }
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct OpenWithConfig {
+    pub vscode: Option<String>,
+    pub visual_studio: Option<String>,
+}
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -323,6 +330,7 @@ pub struct Config {
     pub advanced: AdvancedConfig,
     pub experimental: ExperimentalConfig,
     pub remote: RemoteConfig,
+    pub open_with: OpenWithConfig,
 }
 
 #[derive(Debug)]

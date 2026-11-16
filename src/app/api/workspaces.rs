@@ -36,6 +36,48 @@ impl App {
         )
     }
 
+    pub(super) fn handle_workspace_checkout_get(
+        &self,
+        id: String,
+        target: WorkspaceTarget,
+    ) -> String {
+        let Some(index) = self.parse_workspace_id(&target.workspace_id) else {
+            return workspace_not_found(id, &target.workspace_id);
+        };
+        let Some(workspace) = self.state.workspaces.get(index) else {
+            return workspace_not_found(id, &target.workspace_id);
+        };
+        let path = workspace
+            .worktree_space()
+            .map(|space| space.checkout_path.display().to_string())
+            .or_else(|| {
+                workspace
+                    .git_space()
+                    .map(|space| space.repo_root.display().to_string())
+            })
+            .or_else(|| {
+                workspace
+                    .resolved_identity_cwd_from(&self.state.terminals, &self.terminal_runtimes)
+                    .as_deref()
+                    .and_then(crate::workspace::git_space_metadata)
+                    .map(|space| space.repo_root.display().to_string())
+            });
+        match path {
+            Some(path) => encode_success(
+                id,
+                ResponseResult::WorkspaceCheckout {
+                    workspace_id: target.workspace_id,
+                    path,
+                },
+            ),
+            None => encode_error(
+                id,
+                "not_git_worktree",
+                "This workspace has no Git checkout directory",
+            ),
+        }
+    }
+
     pub(super) fn handle_workspace_create(
         &mut self,
         id: String,

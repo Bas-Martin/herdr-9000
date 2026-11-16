@@ -9,6 +9,7 @@ const KNOWN_TOP_LEVEL_CONFIG_KEYS: &[&str] = &[
     "experimental",
     "keys",
     "onboarding",
+    "open_with",
     "remote",
     "server",
     "session",
@@ -287,6 +288,14 @@ fn load_live_config_from_str(content: &str) -> Result<LoadedConfig, Vec<String>>
         }
     }
 
+    load_live_section(
+        table,
+        "open_with",
+        "Open With config",
+        &mut diagnostics,
+        &mut invalid_sections,
+        |section| config.open_with = section,
+    );
     load_live_section(
         table,
         "theme",

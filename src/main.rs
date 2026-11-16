@@ -34,6 +34,7 @@ mod layout;
 mod logging;
 mod metadata_tokens;
 mod noninteractive_process;
+mod open_with;
 mod pane;
 use ghostty_vt::pane_graphics_files;
 mod persist;
@@ -74,6 +75,12 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Show first-run notification setup on startup.
 # Missing also shows onboarding; set false after you've chosen.
 # onboarding = true
+
+[open_with]
+# Full executable paths; empty values use automatic detection.
+# Manual paths survive installation and updates.
+# vscode = ""
+# visual_studio = ""
 
 [theme]
 # Built-in themes: catppuccin, terminal, tokyo-night, dracula, nord,
@@ -521,6 +528,9 @@ fn main() -> io::Result<()> {
             std::process::exit(2);
         }
     };
+    if raw_args.len() == 2 && raw_args[1] == "--detect-open-with" {
+        return open_with::refresh_detection().map_err(io::Error::other);
+    }
     #[cfg(windows)]
     if let Some(result) = platform::maybe_activate_desktop_notification(&raw_args) {
         return result;

@@ -621,6 +621,18 @@ impl ClientShellState {
             return true;
         }
         match self.overlay.as_mut() {
+            Some(ClientShellOverlay::Settings(settings))
+                if settings.section == ClientSettingsSection::OpenWith =>
+            {
+                let editor = if settings.selected == 0 {
+                    &mut settings.vscode_path
+                } else {
+                    &mut settings.visual_studio_path
+                };
+                editor.insert(text);
+                settings.open_with_error = None;
+                true
+            }
             Some(ClientShellOverlay::TaskFileEditor(editor)) => {
                 let inserted = match editor.field {
                     ClientTaskFileEditorField::Path => {
@@ -1858,6 +1870,32 @@ impl ClientShellState {
 
         if matches!(self.overlay, Some(ClientShellOverlay::ContextMenu(_))) {
             match key.code {
+                KeyCode::Left => {
+                    if matches!(
+                        self.overlay.as_ref(),
+                        Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+                            target: ClientContextMenuTarget::OpenWith { .. },
+                            ..
+                        }))
+                    ) {
+                        self.activate_context_menu_item(3, outcome);
+                    }
+                }
+                KeyCode::Right => {
+                    let selected = match self.overlay.as_ref() {
+                        Some(ClientShellOverlay::ContextMenu(menu))
+                            if menu.items().get(menu.highlighted).is_some_and(|item| {
+                                item.action == ClientContextMenuAction::OpenWith
+                            }) =>
+                        {
+                            Some(menu.highlighted)
+                        }
+                        _ => None,
+                    };
+                    if let Some(selected) = selected {
+                        self.activate_context_menu_item(selected, outcome);
+                    }
+                }
                 KeyCode::Esc => {
                     self.overlay = None;
                     outcome.repaint = true;

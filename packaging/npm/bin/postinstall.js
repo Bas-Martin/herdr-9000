@@ -56,6 +56,12 @@ if (require.main === module) {
     const metadata = require("../../../package.json");
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, "runtime-manifest.json"), "utf8"));
     verifyRuntime(path.join(__dirname, "runtime"), manifest, metadata.version);
+    const detection = spawnSync(path.join(__dirname, "runtime", "herdr.exe"), ["--detect-open-with"], {
+      encoding: "utf8", windowsHide: true, timeout: 30000,
+    });
+    if (detection.error || detection.status !== 0) {
+      console.warn("Open With detection failed. Configure executable paths in Settings -> Open With.");
+    }
   } catch (error) {
     console.error(`herdr-9000 installation failed: ${error.message}`);
     process.exitCode = 1;

@@ -875,6 +875,10 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Installed Herdr command failed verification: $releaseHerdr --version"
         }
+        & $releaseHerdr --detect-open-with
+        if ($LASTEXITCODE -ne 0) {
+            Write-WarningStep "Open With application detection failed. Configure paths in Settings -> Open With."
+        }
         Get-ChildItem -LiteralPath $releasesDir -Force -Directory -Filter ".backup.$releaseName.*" -ErrorAction SilentlyContinue |
             ForEach-Object { Remove-DirectoryWithRetry -Path $_.FullName }
 

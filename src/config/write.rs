@@ -4,6 +4,10 @@ pub(crate) enum ConfigEdit<'a> {
     StatusIndicators(super::StatusIndicatorStyle),
     Sound(bool),
     ToastDelivery(super::ToastDelivery),
+    OpenWith {
+        vscode: &'a str,
+        visual_studio: &'a str,
+    },
 }
 
 impl ConfigEdit<'_> {
@@ -13,11 +17,28 @@ impl ConfigEdit<'_> {
             Self::StatusIndicators(_) => "status indicators",
             Self::Sound(_) => "sound setting",
             Self::ToastDelivery(_) => "toast setting",
+            Self::OpenWith { .. } => "Open With settings",
         }
     }
 
-    pub(crate) fn apply(self, content: &str) -> String {
-        match self {
+    pub(crate) fn apply(self, content: &str) -> Result<String, String> {
+        Ok(match self {
+            Self::OpenWith {
+                vscode,
+                visual_studio,
+            } => {
+                let mut document = content
+                    .parse::<toml_edit::DocumentMut>()
+                    .map_err(|error| format!("cannot save Open With settings: {error}"))?;
+                let open_with = document
+                    .entry("open_with")
+                    .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+                    .as_table_like_mut()
+                    .ok_or("cannot save Open With settings: open_with must be a table")?;
+                open_with.insert("vscode", toml_edit::value(vscode));
+                open_with.insert("visual_studio", toml_edit::value(visual_studio));
+                document.to_string()
+            }
             Self::Theme(name) => {
                 let content =
                     super::upsert_section_value(content, "theme", "name", &format!("\"{name}\""));
@@ -42,7 +63,7 @@ impl ConfigEdit<'_> {
                 let content = super::upsert_section_value(content, "ui.toast", "delivery", value);
                 super::remove_section_key(&content, "ui.toast", "enabled")
             }
-        }
+        })
     }
 }
 
@@ -70,7 +91,7 @@ pub(crate) fn update_file_at(
 
 pub(crate) fn write_edit(edit: ConfigEdit<'_>) -> Result<(), String> {
     update_file_at(&super::config_path(), edit.description(), |content| {
-        Ok(edit.apply(content))
+        edit.apply(content)
     })
 }
 

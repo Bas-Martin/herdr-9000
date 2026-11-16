@@ -110,6 +110,22 @@ Git 工作区行提供 worktree 操作。`New worktree` 会创建检出：如果
 
 删除 worktree 检出需要显式操作。在归组的子工作区上使用 `Delete worktree checkout...` 来运行 `git worktree remove`。Herdr 会先请求 Git 安全删除。如果 Git 因检出中存在已修改或未跟踪的文件而拒绝，Herdr 会在强制删除前再次确认。分支不会被删除。
 
+### 在桌面应用中打开 worktree
+
+右键点击本地 Git 工作区或 worktree，选择 **Open With ›**，即可在 **VS Code**、**Visual Studio** 或 **Windows Explorer** 中打开该检出目录。可以点击或按 Enter 选择，按右方向键进入子菜单，按左方向键或选择 **Back** 返回。远程 worktree 不能作为本地目录打开。
+
+Windows 安装程序会在安装和每次更新时检测 VS Code 与 Visual Studio。如果应用未找到或已被移除，打开 worktree 时会再次检测。Visual Studio 和 Windows Explorer 仅支持 Windows；VS Code 也支持 Linux 和 macOS。
+
+在紧邻 **Integrations** 的 **Settings → Open With** 中，分别输入各应用可执行文件的完整路径，然后选择 **Save**。留空表示使用自动检测。使用 Tab/Shift+Tab 或上下方向键选择字段，使用 Alt+左右方向键切换设置标签页。手动设置的路径会在重启和更新后保留，并分别优先于各应用的自动检测结果：
+
+```toml
+[open_with]
+vscode = 'C:\Users\you\AppData\Local\Programs\Microsoft VS Code\Code.exe'
+visual_studio = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe'
+```
+
+Windows Explorer 无需配置可执行文件。应用未找到、可执行文件路径无效或启动失败时，Herdr 会显示明确的错误信息。
+
 ### 在新 worktree 中保留本地文件
 
 创建 worktree 时，Herdr 会将仓库主检出中匹配模式、被 Git 忽略或未跟踪的本地文件复制到新检出，并保留相对路径。不会覆盖目标中已被跟踪的文件。没有匹配项也没有问题；不会跟随指向检出边界之外的符号链接。

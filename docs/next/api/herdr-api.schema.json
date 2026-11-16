@@ -6093,6 +6093,22 @@
         {
           "properties": {
             "method": {
+              "const": "workspace.checkout.get",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/WorkspaceTarget"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "workspace.focus",
               "type": "string"
             },
@@ -11380,6 +11396,26 @@
         },
         "ResponseResult": {
           "oneOf": [
+            {
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "workspace_checkout",
+                  "type": "string"
+                },
+                "workspace_id": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "workspace_id",
+                "path"
+              ],
+              "type": "object"
+            },
             {
               "properties": {
                 "capabilities": {

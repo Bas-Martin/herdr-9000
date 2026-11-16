@@ -419,6 +419,7 @@ pub(super) enum ClientSettingsSection {
     Sound,
     Toast,
     Integrations,
+    OpenWith,
 }
 
 impl ClientSettingsSection {
@@ -428,6 +429,7 @@ impl ClientSettingsSection {
         Self::Sound,
         Self::Toast,
         Self::Integrations,
+        Self::OpenWith,
     ];
 
     pub(super) fn label(self) -> &'static str {
@@ -437,6 +439,7 @@ impl ClientSettingsSection {
             Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
+            Self::OpenWith => "Open With",
         }
     }
 }
@@ -451,6 +454,9 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) integration_messages: Vec<String>,
     pub(super) loading_integrations: bool,
     pub(super) installing_integrations: bool,
+    pub(super) vscode_path: TextEditor,
+    pub(super) visual_studio_path: TextEditor,
+    pub(super) open_with_error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -554,6 +560,11 @@ pub(super) struct ClientWorktreeRemoveOverlay {
 pub(super) enum ClientContextMenuAction {
     Rename,
     ProjectSettings,
+    OpenWith,
+    OpenVsCode,
+    OpenVisualStudio,
+    OpenExplorer,
+    Back,
     Close,
     NewWorktree,
     OpenWorktree,
@@ -572,6 +583,9 @@ pub(super) enum ClientContextMenuAction {
 
 #[derive(Debug)]
 pub(super) enum ClientContextMenuTarget {
+    OpenWith {
+        workspace_id: String,
+    },
     Workspace {
         workspace_id: String,
         is_git: bool,
@@ -763,6 +777,9 @@ pub(super) enum PendingEndpointKind {
     ReloadConfig,
     IntegrationList,
     IntegrationInstall,
+    OpenWorktreeWith {
+        application: crate::open_with::Application,
+    },
     PrepareWorktreeCreate {
         workspace_id: String,
     },
@@ -1122,6 +1139,7 @@ pub(crate) struct ClientShellState {
     pub(super) config_diagnostic: Option<String>,
     pub(super) endpoint_error: Option<String>,
     pub(super) endpoint_error_deadline: Option<std::time::Instant>,
+    pub(super) open_with_pending: Option<tokio::sync::oneshot::Receiver<Result<(), String>>>,
     pub(super) dismissed_product_announcement: Option<(String, String)>,
 }
 
@@ -1291,6 +1309,7 @@ impl ClientShellState {
             local_config_diagnostic,
             endpoint_error: None,
             endpoint_error_deadline: None,
+            open_with_pending: None,
             dismissed_product_announcement: None,
         }
     }

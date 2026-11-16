@@ -695,6 +695,7 @@ impl ClientShellState {
                 | PendingEndpointKind::ReloadConfig
                 | PendingEndpointKind::IntegrationList
                 | PendingEndpointKind::IntegrationInstall
+                | PendingEndpointKind::OpenWorktreeWith { .. }
                 | PendingEndpointKind::SelectionCopy
                 | PendingEndpointKind::PaneScroll { .. }
                 | PendingEndpointKind::WordSelection { .. }

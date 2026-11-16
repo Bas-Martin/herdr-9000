@@ -110,6 +110,22 @@ worktree アクションは Git ワークスペースの行から使えます。
 
 worktree チェックアウトの削除は明示的に行います。グループ化された子ワークスペースで `Delete worktree checkout...` を使うと `git worktree remove` が実行されます。Herdr はまず Git に安全な削除を要求します。チェックアウトに変更済みまたは未追跡のファイルがあり Git が拒否した場合、Herdr は強制削除を実行する前にもう一度確認します。ブランチは削除されません。
 
+### デスクトップアプリケーションで worktree を開く
+
+ローカルの Git ワークスペースまたは worktree を右クリックし、**Open With ›** から **VS Code**、**Visual Studio**、**Windows Explorer** を選ぶと、そのチェックアウトディレクトリが開きます。クリックまたは Enter で選択し、右矢印でサブメニューに入り、左矢印または **Back** で戻れます。リモートの worktree をローカルディレクトリとして開くことはできません。
+
+Windows インストーラーは、インストール時と更新時に VS Code と Visual Studio を検出します。アプリケーションが見つからない場合や削除された場合は、worktree を開くときに再検出します。Visual Studio と Windows Explorer は Windows 専用です。VS Code は Linux と macOS でも使えます。
+
+**Integrations** のすぐ隣にある **Settings → Open With** で、各アプリケーションの実行ファイルのフルパスを入力し、**Save** を選びます。空欄にすると自動検出を使います。Tab/Shift+Tab または上下矢印でフィールドを選び、Alt+左右矢印で設定タブを切り替えます。手動指定したパスは再起動や更新後も保持され、各アプリケーションの自動検出結果より優先されます:
+
+```toml
+[open_with]
+vscode = 'C:\Users\you\AppData\Local\Programs\Microsoft VS Code\Code.exe'
+visual_studio = 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\devenv.exe'
+```
+
+Windows Explorer の実行ファイル設定は不要です。アプリケーションが見つからない場合、実行ファイルのパスが無効な場合、起動に失敗した場合は、Herdr にエラーが表示されます。
+
 ### 新しい worktree にローカルファイルを引き継ぐ
 
 worktree を作成するとき、Herdr はリポジトリのメインチェックアウトから、パターンに一致する Git の無視対象または未追跡のローカルファイルを、相対パスを保ったまま新しいチェックアウトへコピーします。コピー先で追跡されているファイルは上書きしません。一致するファイルがなくても問題ありません。チェックアウトの境界外へ出るシンボリックリンクはたどりません。
