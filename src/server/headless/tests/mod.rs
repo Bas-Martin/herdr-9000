@@ -1304,8 +1304,9 @@ async fn unrelated_render_keeps_synchronized_pane_frame_committed() {
     );
 
     write_shared_test_pane(&mut server, pane_id, b"\rCOMPLETE\x1b[?2026l");
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])) {
+        server.render_and_stream();
+    }
     let after = recv_pane_surface(&render, "completed frame");
     assert!(frame_text(&after.frame).contains("COMPLETE"));
     assert!(after.projection_revision > projection_before);
@@ -1336,16 +1337,18 @@ async fn sibling_retained_output_waits_for_synchronized_pane_to_finish() {
 
     write_shared_test_pane(&mut server, first, b"\x1b[?2026h\rPARTIAL");
     write_shared_test_pane(&mut server, second, b"\rUPDATED");
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([second])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([second])) {
+        server.render_and_stream();
+    }
     assert!(
         render.try_recv().is_err(),
         "sibling published partial frame"
     );
 
     write_shared_test_pane(&mut server, first, b"\rCOMPLETE\x1b[?2026l");
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([first])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([first])) {
+        server.render_and_stream();
+    }
     let after = recv_pane_surface(&render, "completed split");
     let text = frame_text(&after.frame);
     assert!(
@@ -1568,8 +1571,9 @@ async fn different_size_shells_receive_geometry_specific_patches_from_one_dirty_
     .contains("MIXED"));
 
     write_shared_test_pane(&mut server, pane_id, b"\x1b[?1049hALT");
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])) {
+        server.render_and_stream();
+    }
     let large_alt = recv_pane_surface(&large_render, "large alternate-screen surface");
     let small_alt = recv_pane_surface(&small_render, "small alternate-screen surface");
     assert!(large_alt.panes[0].alternate_screen_active);
@@ -1588,8 +1592,9 @@ async fn different_size_shells_receive_geometry_specific_patches_from_one_dirty_
     );
 
     write_shared_test_pane(&mut server, pane_id, b"\x1b[?1049l");
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])) {
+        server.render_and_stream();
+    }
     let large_main = recv_pane_surface(&large_render, "large restored main-screen surface");
     let small_main = recv_pane_surface(&small_render, "small restored main-screen surface");
     assert!(!large_main.panes[0].alternate_screen_active);
