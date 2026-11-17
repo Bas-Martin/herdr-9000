@@ -151,7 +151,7 @@ pub(crate) fn detect(application: Application) -> Option<PathBuf> {
 pub(crate) fn launch(
     application: Application,
     executable: Option<&Path>,
-    directory: &Path,
+    target: &Path,
 ) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::{
@@ -163,17 +163,17 @@ pub(crate) fn launch(
         },
     };
     let file = executable
-        .unwrap_or(directory)
+        .unwrap_or(target)
         .as_os_str()
         .encode_wide()
         .chain(Some(0))
         .collect::<Vec<_>>();
     let parameters = executable.map(|_| {
-        let directory = super::quote_windows_command_line_arg(&directory.to_string_lossy());
+        let target = super::quote_windows_command_line_arg(&target.to_string_lossy());
         if application == Application::VsCode {
-            format!("--new-window {directory}")
+            format!("--new-window {target}")
         } else {
-            directory
+            target
         }
     });
     let parameters = parameters
