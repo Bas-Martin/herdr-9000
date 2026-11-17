@@ -11,6 +11,7 @@ struct CwdObservation {
 pub(super) struct MetadataRefresh {
     pending: Option<std::thread::JoinHandle<Vec<CwdObservation>>>,
     next_refresh: Option<Instant>,
+    requested: bool,
 }
 
 impl MetadataRefresh {
@@ -44,13 +45,18 @@ impl MetadataRefresh {
                 }
             }
         }
+        if self.requested {
+            self.request(app, Instant::now());
+        }
         changed
     }
 
     pub(super) fn request(&mut self, app: &app::App, now: Instant) {
+        self.requested = true;
         if self.pending.is_some() || self.next_refresh.is_some_and(|deadline| now < deadline) {
             return;
         }
+        self.requested = false;
         self.next_refresh = Some(now + Duration::from_millis(250));
         let probes = app
             .state
