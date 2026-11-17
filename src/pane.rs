@@ -3600,6 +3600,7 @@ impl PaneRuntime {
         }
     }
 
+    #[cfg(any(unix, test))]
     pub fn snapshot_history(&self) -> Option<String> {
         self.history_source().capture()
     }

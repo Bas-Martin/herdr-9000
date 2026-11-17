@@ -109,6 +109,7 @@ fn test_headless_server_with_event_hub(event_hub: api::EventHub) -> HeadlessServ
         client_socket_identity,
         clients: HashMap::new(),
         native_graphics: Default::default(),
+        metadata_refresh: Default::default(),
         interactive_input_deadlines: HashMap::new(),
         interactive_render_budget: None,
         #[cfg(unix)]

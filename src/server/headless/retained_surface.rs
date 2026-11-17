@@ -512,9 +512,6 @@ impl HeadlessServer {
                 graphics,
             });
         }
-        if updates.is_empty() {
-            success!("unchanged");
-        }
         for recipient in &recipients {
             if has_synchronized_pane(&self.app, recipient.surface) {
                 crate::render_prof::event("retained_surface.fallback.synchronized_during_patch");
@@ -522,6 +519,61 @@ impl HeadlessServer {
             }
         }
         updates.retain(|update| !full_clients.contains(&update.client_id));
+        // Full rendering clears shared terminal damage, so it must include retained
+        // peers of those terminals before any row patches are published.
+        if !full_clients.is_empty()
+            && recipients
+                .iter()
+                .filter(|recipient| !full_clients.contains(&recipient.client_id))
+                .flat_map(|recipient| &recipient.surface.panes)
+                .filter_map(|pane| {
+                    let (workspace_index, pane_id) = self.app.parse_pane_id(&pane.pane_id)?;
+                    self.app.state.workspaces[workspace_index].terminal_id(pane_id)
+                })
+                .any(|terminal_id| {
+                    full_clients.iter().any(|client_id| {
+                        let Some(client) = self.clients.get(client_id) else {
+                            return false;
+                        };
+                        match &client.mode {
+                            ClientConnectionMode::TerminalPending => false,
+                            ClientConnectionMode::TerminalAttach {
+                                terminal_id: target,
+                            }
+                            | ClientConnectionMode::TerminalObserve {
+                                terminal_id: target,
+                            } => target == terminal_id.as_str(),
+                            ClientConnectionMode::ClientShell => {
+                                let shows_popup = self.popup_owner_tab_id
+                                    == self.shell_tab_id_for_client(*client_id)
+                                    && self
+                                        .app
+                                        .state
+                                        .popup_pane
+                                        .as_ref()
+                                        .is_some_and(|popup| &popup.terminal_id == terminal_id);
+                                shows_popup
+                                    || self.shell_target_for_client(*client_id).is_some_and(
+                                        |target| {
+                                            let tab = &self.app.state.workspaces
+                                                [target.workspace_index]
+                                                .tabs[target.tab_index];
+                                            tab.panes.iter().any(|(pane_id, pane)| {
+                                                (!tab.zoomed || tab.layout.focused() == *pane_id)
+                                                    && &pane.attached_terminal_id == terminal_id
+                                            })
+                                        },
+                                    )
+                            }
+                        }
+                    })
+                })
+        {
+            fallback!("shared_runtime");
+        }
+        if updates.is_empty() {
+            success!("unchanged");
+        }
 
         let mut sent = 0u64;
         let mut deferred = 0u64;
