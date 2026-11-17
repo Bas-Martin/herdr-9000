@@ -6,7 +6,7 @@ enum SessionSaveJob {
     Clear,
     Save {
         snapshot: crate::persist::SessionSnapshot,
-        history: Option<crate::persist::SessionHistorySnapshot>,
+        history: Option<crate::persist::SessionHistorySource>,
     },
 }
 
@@ -49,8 +49,7 @@ impl App {
                 self.state.selected,
             );
             let history = self.persist_pane_history.then(|| {
-                crate::persist::capture_history(
-                    &snapshot,
+                crate::persist::capture_history_source(
                     &self.state.workspaces,
                     &self.terminal_runtimes,
                 )
@@ -147,6 +146,9 @@ fn run_session_save_job(
     };
     match job {
         SessionSaveJob::Clear => writer.clear(),
-        SessionSaveJob::Save { snapshot, history } => writer.save(&snapshot, history.as_ref()),
+        SessionSaveJob::Save { snapshot, history } => {
+            let history = history.map(|source| source.capture(&snapshot));
+            writer.save(&snapshot, history.as_ref());
+        }
     }
 }

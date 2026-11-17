@@ -129,6 +129,7 @@ struct RecentAgentProcessExit {
 pub struct TerminalState {
     pub id: TerminalId,
     pub cwd: PathBuf,
+    pub(crate) observed_cwd: crate::pane::CwdSnapshot,
     pub detected_agent: Option<Agent>,
     pub fallback_state: AgentState,
     fallback_visible_blocker: bool,
@@ -169,6 +170,7 @@ impl TerminalState {
         Self {
             id,
             cwd,
+            observed_cwd: Default::default(),
             detected_agent: None,
             fallback_state: AgentState::Unknown,
             fallback_visible_blocker: false,

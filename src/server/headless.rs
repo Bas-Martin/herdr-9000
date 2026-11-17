@@ -78,6 +78,7 @@ mod bootstrap;
 mod client_views;
 mod endpoint_requests;
 mod lifecycle;
+mod metadata;
 mod native_graphics;
 mod notifications;
 mod render;
@@ -214,6 +215,7 @@ pub struct HeadlessServer {
     popup_owner_tab_id: Option<String>,
     /// Process-local identity used to reject shell replacements from an earlier server boot.
     client_shell_boot_id: String,
+    metadata_refresh: metadata::MetadataRefresh,
     /// Outer window title last pushed, paired with the client that received it.
     /// Keying on the client means a newly attached terminal is written to even
     /// when the title itself has not changed, without every code path that
@@ -374,6 +376,7 @@ impl HeadlessServer {
                     .unwrap_or_default()
                     .as_nanos()
             ),
+            metadata_refresh: Default::default(),
             sent_window_title: None,
             api_window_title: None,
             server_keybindings,
@@ -536,6 +539,12 @@ impl HeadlessServer {
             }
 
             self.drain_client_config_reload_request();
+            if self.clients.values().any(ClientConnection::is_shell_client)
+                && self.metadata_refresh.apply(&mut self.app)
+            {
+                needs_render = true;
+                needs_full_render = true;
+            }
             self.sync_immediate_pty_sources();
             self.stream_host_mouse_capture_mode();
             self.stream_direct_terminal_keyboard_mode();

@@ -13,7 +13,7 @@ use std::fs;
 use crate::api::schema::{
     ErrorBody, ErrorResponse, Method, Request, ResponseResult, ServerCapabilities, SuccessResponse,
 };
-use crate::api::subscriptions::ActiveSubscription;
+use crate::api::subscriptions::{ActiveSubscription, PollSamples};
 use crate::api::wait::{prompt_agent, wait_for_agent, wait_for_event, wait_for_output};
 use crate::api::{request_changes_ui, socket_path, ApiRequestMessage, ApiRequestSender, EventHub};
 use crate::ipc::{
@@ -860,8 +860,10 @@ fn stream_subscriptions(
             return Ok(());
         }
 
+        let mut samples = PollSamples::default();
         for subscription in &mut subscriptions {
-            let events = match subscription.poll_batch(api_tx, event_hub) {
+            let events = match subscription.poll_batch_with_samples(api_tx, event_hub, &mut samples)
+            {
                 Ok(events) => events,
                 Err(error) => {
                     write_json_line_allow_disconnect(

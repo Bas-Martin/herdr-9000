@@ -413,52 +413,74 @@ pub(super) fn layout_fingerprint(snapshot: &SessionSnapshot) -> Option<String> {
     Some(format!("{:x}", Sha256::digest(bytes)))
 }
 
+/// Owned terminal reads with the workspace, tab, and pane identities captured on
+/// the main thread. Exporting the terminal contents can then run on the save worker.
+pub(crate) struct SessionHistorySource {
+    workspaces: Vec<Vec<HashMap<u32, crate::pane::TerminalHistorySource>>>,
+}
+
+pub(crate) fn capture_history_source(
+    workspaces: &[Workspace],
+    terminal_runtimes: &TerminalRuntimeRegistry,
+) -> SessionHistorySource {
+    SessionHistorySource {
+        workspaces: workspaces
+            .iter()
+            .map(|workspace| {
+                workspace
+                    .tabs
+                    .iter()
+                    .map(|tab| {
+                        tab.panes
+                            .iter()
+                            .filter_map(|(id, pane)| {
+                                let runtime = terminal_runtimes.get(&pane.attached_terminal_id)?;
+                                Some((id.raw(), runtime.history_source()))
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
+            .collect(),
+    }
+}
+
+impl SessionHistorySource {
+    pub(crate) fn capture(self, snapshot: &SessionSnapshot) -> SessionHistorySnapshot {
+        SessionHistorySnapshot {
+            version: SNAPSHOT_VERSION,
+            layout_fingerprint: layout_fingerprint(snapshot),
+            workspaces: self
+                .workspaces
+                .into_iter()
+                .map(|tabs| WorkspaceHistorySnapshot {
+                    tabs: tabs
+                        .into_iter()
+                        .map(|panes| TabHistorySnapshot {
+                            panes: panes
+                                .into_iter()
+                                .filter_map(|(id, source)| {
+                                    let ansi = source.capture()?;
+                                    let lines = ansi.lines().count();
+                                    Some((id, PaneHistorySnapshot { ansi, lines }))
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
 /// Capture pane screen history separately from the structural session snapshot.
 pub fn capture_history(
     snapshot: &SessionSnapshot,
     workspaces: &[Workspace],
     terminal_runtimes: &TerminalRuntimeRegistry,
 ) -> SessionHistorySnapshot {
-    SessionHistorySnapshot {
-        version: SNAPSHOT_VERSION,
-        layout_fingerprint: layout_fingerprint(snapshot),
-        workspaces: workspaces
-            .iter()
-            .map(|workspace| WorkspaceHistorySnapshot {
-                tabs: workspace
-                    .tabs
-                    .iter()
-                    .map(|tab| TabHistorySnapshot {
-                        panes: capture_tab_history(tab, terminal_runtimes),
-                    })
-                    .collect(),
-            })
-            .collect(),
-    }
-}
-
-fn capture_tab_history(
-    tab: &crate::workspace::Tab,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-) -> HashMap<u32, PaneHistorySnapshot> {
-    let mut panes = HashMap::new();
-    for (id, pane) in &tab.panes {
-        if let Some(history) = capture_pane_history(Some(pane), terminal_runtimes) {
-            panes.insert(id.raw(), history);
-        }
-    }
-    panes
-}
-
-fn capture_pane_history(
-    pane: Option<&crate::pane::PaneState>,
-    terminal_runtimes: &TerminalRuntimeRegistry,
-) -> Option<PaneHistorySnapshot> {
-    let ansi = terminal_runtimes
-        .get(&pane?.attached_terminal_id)?
-        .snapshot_history()?;
-    let lines = ansi.lines().count();
-    Some(PaneHistorySnapshot { ansi, lines })
+    capture_history_source(workspaces, terminal_runtimes).capture(snapshot)
 }
 
 pub(super) fn capture_node(node: &Node) -> LayoutSnapshot {

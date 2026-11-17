@@ -230,6 +230,7 @@ impl HeadlessServer {
     ) -> bool {
         crate::render_prof::event("retained_surface.attempt");
         let started = crate::render_prof::timer();
+        let mut full_clients = HashSet::new();
         macro_rules! fallback {
             ($reason:literal) => {{
                 crate::render_prof::event(concat!("retained_surface.fallback.", $reason));
@@ -239,6 +240,7 @@ impl HeadlessServer {
         }
         macro_rules! success {
             ($reason:literal) => {{
+                self.render_and_stream_clients(&full_clients);
                 crate::render_prof::event("retained_surface.success");
                 crate::render_prof::event(concat!("retained_surface.success.", $reason));
                 crate::render_prof::duration_since("retained_surface.total", started);
@@ -248,7 +250,6 @@ impl HeadlessServer {
 
         if pty_sources.is_empty()
             || self.app.full_redraw_pending
-            || self.app.state.popup_pane.is_some()
             || self.app.state.reveal_hidden_cursor_for_cjk_ime
         {
             fallback!("unsafe_state");
@@ -264,27 +265,36 @@ impl HeadlessServer {
         if targets.is_empty() {
             success!("no_active_surface");
         }
-        if targets
-            .iter()
-            .any(|target| !matches!(target.4, ClientConnectionMode::ClientShell))
-        {
-            fallback!("non_shell_target");
-        }
 
         let mut recipients = Vec::with_capacity(targets.len());
-        for (client_id, (cols, rows), _, _, _) in &targets {
+        for (client_id, (cols, rows), _, _, mode) in &targets {
+            macro_rules! fallback_client {
+                ($reason:literal) => {{
+                    crate::render_prof::event(concat!("retained_surface.fallback.", $reason));
+                    full_clients.insert(*client_id);
+                    continue;
+                }};
+            }
+            if !matches!(mode, ClientConnectionMode::ClientShell) {
+                fallback_client!("non_shell_target");
+            }
+            if self.app.state.popup_pane.is_some()
+                && self.popup_owner_tab_id == self.shell_tab_id_for_client(*client_id)
+            {
+                fallback_client!("popup");
+            }
             let Some(client) = self.clients.get(client_id) else {
-                fallback!("client_missing");
+                fallback_client!("client_missing");
             };
             if client.deferred_render() != DeferredRender::None {
                 crate::render_prof::event("retained_surface.recipient_deferred");
                 continue;
             }
             if client.render_state.requires_recompute() {
-                fallback!("recompute_pending");
+                fallback_client!("recompute_pending");
             }
             let Some(surface) = client.render_state.last_pane_surface() else {
-                fallback!("no_baseline");
+                fallback_client!("no_baseline");
             };
             if surface.boot_id != self.client_shell_boot_id
                 || surface.projection_revision != client.shell_projection_revision
@@ -294,10 +304,10 @@ impl HeadlessServer {
                 || !surface.graphics.assets.is_empty()
                 || !surface.frame.graphics.is_empty()
             {
-                fallback!("baseline_mismatch");
+                fallback_client!("baseline_mismatch");
             }
             if has_synchronized_pane(&self.app, surface) {
-                fallback!("synchronized_visible");
+                fallback_client!("synchronized_visible");
             }
             recipients.push(RetainedRecipient {
                 client_id: *client_id,
@@ -309,7 +319,22 @@ impl HeadlessServer {
         }
 
         let mut collected = Vec::with_capacity(pty_sources.len());
-        for source in pty_sources {
+        'sources: for source in pty_sources {
+            macro_rules! fallback_source {
+                ($reason:literal) => {{
+                    crate::render_prof::event(concat!("retained_surface.fallback.", $reason));
+                    for recipient in &recipients {
+                        if recipient.surface.panes.iter().any(|pane| {
+                            self.app
+                                .parse_pane_id(&pane.pane_id)
+                                .is_some_and(|(_, pane_id)| pane_id == *source)
+                        }) {
+                            full_clients.insert(recipient.client_id);
+                        }
+                    }
+                    continue 'sources;
+                }};
+            }
             let mut public_pane_id = None;
             let mut width = 0u16;
             let mut height = 0u16;
@@ -329,17 +354,17 @@ impl HeadlessServer {
                 continue;
             };
             let Some((workspace_index, pane_id)) = self.app.parse_pane_id(&public_pane_id) else {
-                fallback!("pane_missing");
+                fallback_source!("pane_missing");
             };
             let Some(runtime) = self.app.state.runtime_for_pane_in_workspace(
                 &self.app.terminal_runtimes,
                 workspace_index,
                 pane_id,
             ) else {
-                fallback!("runtime_missing");
+                fallback_source!("runtime_missing");
             };
             let Some(snapshot) = runtime.collect_dirty_patch_snapshot(width, height) else {
-                fallback!("terminal_snapshot");
+                fallback_source!("terminal_snapshot");
             };
             let patch = match snapshot.patch {
                 crate::pane::TerminalDirtyPatchOutcome::Clean => {
@@ -348,7 +373,7 @@ impl HeadlessServer {
                 }
                 crate::pane::TerminalDirtyPatchOutcome::Patch(patch) => patch,
                 crate::pane::TerminalDirtyPatchOutcome::Fallback => {
-                    fallback!("terminal_patch");
+                    fallback_source!("terminal_patch");
                 }
             };
             collected.push(CollectedPanePatch {
@@ -364,7 +389,17 @@ impl HeadlessServer {
         }
 
         let mut updates = Vec::with_capacity(recipients.len());
-        for recipient in &recipients {
+        'recipients: for recipient in &recipients {
+            if full_clients.contains(&recipient.client_id) {
+                continue;
+            }
+            macro_rules! fallback_recipient {
+                ($reason:literal) => {{
+                    crate::render_prof::event(concat!("retained_surface.fallback.", $reason));
+                    full_clients.insert(recipient.client_id);
+                    continue 'recipients;
+                }};
+            }
             let client_id = recipient.client_id;
             let surface = recipient.surface;
             let mut panes = surface.panes.clone();
@@ -386,21 +421,21 @@ impl HeadlessServer {
                 // a scrollbar gutter. Recompute layout and resize the runtime
                 // through the complete renderer before retaining further rows.
                 if pane.alternate_screen_active != collected_pane.alternate_screen_active {
-                    fallback!("alternate_screen_geometry");
+                    fallback_recipient!("alternate_screen_geometry");
                 }
                 if patch_intersects_hyperlinks(
                     &surface.frame,
                     pane.inner_rect,
                     &collected_pane.patch,
                 ) {
-                    fallback!("hyperlink");
+                    fallback_recipient!("hyperlink");
                 }
                 refresh_graphics |= collected_pane.graphics_may_have_placements;
                 let previous_pane = pane.clone();
                 let Some(rows) =
                     changed_rows(&surface.frame, pane.inner_rect, &collected_pane.patch)
                 else {
-                    fallback!("invalid_patch");
+                    fallback_recipient!("invalid_patch");
                 };
                 patch_rows.extend(rows);
                 let Some(scrollbar_rows) = retained_scrollbar_patch(
@@ -410,7 +445,7 @@ impl HeadlessServer {
                     collected_pane.alternate_screen_active,
                     collected_pane.scroll_metrics,
                 ) else {
-                    fallback!("scrollbar_patch");
+                    fallback_recipient!("scrollbar_patch");
                 };
                 patch_rows.extend(scrollbar_rows);
                 pane.content_revision = collected_pane.content_revision;
@@ -442,7 +477,7 @@ impl HeadlessServer {
             let mut graphics_changed = false;
             let graphics = if refresh_graphics {
                 let Some(target) = self.shell_target_for_client(client_id) else {
-                    fallback!("graphics_target");
+                    fallback_recipient!("graphics_target");
                 };
                 let client = &self.clients[&client_id];
                 let Some((graphics, delivery, sources)) =
@@ -455,7 +490,7 @@ impl HeadlessServer {
                         client_id,
                     )
                 else {
-                    fallback!("graphics_geometry");
+                    fallback_recipient!("graphics_geometry");
                 };
                 graphics_changed = graphics != surface.graphics;
                 Some((graphics, delivery, sources))
@@ -480,12 +515,13 @@ impl HeadlessServer {
         if updates.is_empty() {
             success!("unchanged");
         }
-        if recipients
-            .iter()
-            .any(|recipient| has_synchronized_pane(&self.app, recipient.surface))
-        {
-            fallback!("synchronized_during_patch");
+        for recipient in &recipients {
+            if has_synchronized_pane(&self.app, recipient.surface) {
+                crate::render_prof::event("retained_surface.fallback.synchronized_during_patch");
+                full_clients.insert(recipient.client_id);
+            }
         }
+        updates.retain(|update| !full_clients.contains(&update.client_id));
 
         let mut sent = 0u64;
         let mut deferred = 0u64;

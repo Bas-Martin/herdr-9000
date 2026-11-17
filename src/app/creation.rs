@@ -100,6 +100,40 @@ impl App {
         self.resolve_new_terminal_cwd(follow_cwd)
     }
 
+    pub(crate) fn cached_new_workspace_cwd_from_tab(
+        &self,
+        ws_idx: usize,
+        tab_idx: Option<usize>,
+    ) -> PathBuf {
+        let workspace = self.state.workspaces.get(ws_idx);
+        let focused = workspace
+            .and_then(|workspace| workspace.tabs.get(tab_idx?))
+            .and_then(|tab| tab.terminal_id(tab.layout.focused()))
+            .and_then(|id| self.state.terminals.get(id));
+        let follow_cwd = focused
+            .map(|terminal| {
+                terminal
+                    .observed_cwd
+                    .follow_cwd
+                    .as_ref()
+                    .unwrap_or(&terminal.cwd)
+                    .clone()
+            })
+            .or_else(|| {
+                let tab = workspace?.tabs.first()?;
+                let terminal = self.state.terminals.get(tab.terminal_id(tab.root_pane)?)?;
+                Some(
+                    terminal
+                        .observed_cwd
+                        .cwd
+                        .as_ref()
+                        .unwrap_or(&terminal.cwd)
+                        .clone(),
+                )
+            });
+        self.resolve_new_terminal_cwd(follow_cwd)
+    }
+
     pub(super) fn workspace_creation_source(&self) -> Option<usize> {
         if self.state.mode == Mode::Navigate
             && self.state.workspaces.get(self.state.selected).is_some()
@@ -327,6 +361,23 @@ impl App {
         ws_idx: usize,
         pane_id: crate::layout::PaneId,
     ) -> Option<crate::api::schema::PaneInfo> {
+        self.pane_metadata_with_cwd(ws_idx, pane_id, false)
+    }
+
+    pub(super) fn pane_cached_metadata(
+        &self,
+        ws_idx: usize,
+        pane_id: crate::layout::PaneId,
+    ) -> Option<crate::api::schema::PaneInfo> {
+        self.pane_metadata_with_cwd(ws_idx, pane_id, true)
+    }
+
+    fn pane_metadata_with_cwd(
+        &self,
+        ws_idx: usize,
+        pane_id: crate::layout::PaneId,
+        cached: bool,
+    ) -> Option<crate::api::schema::PaneInfo> {
         let ws = self.state.workspaces.get(ws_idx)?;
         let pane = ws.pane_state(pane_id)?;
         let terminal = self.state.terminals.get(&pane.attached_terminal_id)?;
@@ -343,12 +394,32 @@ impl App {
             workspace_id: self.public_workspace_id(ws_idx),
             tab_id: self.public_tab_id(ws_idx, tab_idx)?,
             focused,
-            cwd: ws.tabs[tab_idx]
-                .cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
-                .map(|cwd| cwd.display().to_string()),
-            foreground_cwd: ws.tabs[tab_idx]
-                .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
-                .map(|cwd| cwd.display().to_string()),
+            cwd: if cached {
+                Some(
+                    terminal
+                        .observed_cwd
+                        .cwd
+                        .as_ref()
+                        .unwrap_or(&terminal.cwd)
+                        .display()
+                        .to_string(),
+                )
+            } else {
+                ws.tabs[tab_idx]
+                    .cwd_for_pane(pane_id, &self.state.terminals, &self.terminal_runtimes)
+                    .map(|cwd| cwd.display().to_string())
+            },
+            foreground_cwd: if cached {
+                terminal
+                    .observed_cwd
+                    .foreground_cwd
+                    .as_ref()
+                    .map(|cwd| cwd.display().to_string())
+            } else {
+                ws.tabs[tab_idx]
+                    .foreground_cwd_for_pane(pane_id, &self.terminal_runtimes)
+                    .map(|cwd| cwd.display().to_string())
+            },
             restore_error: terminal.restore_error.clone(),
             label: terminal.manual_label.clone(),
             agent: terminal.effective_agent_label().map(str::to_string),
@@ -386,12 +457,22 @@ impl App {
     }
 
     pub(super) fn workspace_info(&self, index: usize) -> crate::api::schema::WorkspaceInfo {
+        let label = self.state.workspaces[index]
+            .display_name_from(&self.state.terminals, &self.terminal_runtimes);
+        self.workspace_info_with_label(index, label)
+    }
+
+    pub(super) fn workspace_info_with_label(
+        &self,
+        index: usize,
+        label: String,
+    ) -> crate::api::schema::WorkspaceInfo {
         let ws = &self.state.workspaces[index];
         let (agg_state, seen) = ws.aggregate_state(&self.state.terminals);
         crate::api::schema::WorkspaceInfo {
             workspace_id: self.public_workspace_id(index),
             number: index + 1,
-            label: ws.display_name_from(&self.state.terminals, &self.terminal_runtimes),
+            label,
             focused: self.state.active == Some(index),
             pane_count: ws.public_pane_numbers.len(),
             tab_count: ws.tabs.len(),
