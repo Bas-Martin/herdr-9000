@@ -411,7 +411,7 @@ impl TerminalRuntime {
         self.0.recent_unwrapped_ansi_snapshot(lines)
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, unix))]
     pub fn snapshot_history(&self) -> Option<String> {
         self.0.snapshot_history()
     }

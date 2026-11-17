@@ -3579,13 +3579,6 @@ impl PaneRuntime {
         result
     }
 
-    #[cfg(test)]
-    pub fn recent_unwrapped_ansi(&self, lines: usize) -> String {
-        let result = self.terminal.recent_unwrapped_ansi(lines);
-        self.compression.wake();
-        result
-    }
-
     pub(crate) fn recent_unwrapped_ansi_snapshot(&self, lines: usize) -> TerminalReadSnapshot {
         let result = self.terminal.recent_unwrapped_ansi_snapshot(lines);
         self.compression.wake();
@@ -3600,7 +3593,7 @@ impl PaneRuntime {
         }
     }
 
-    #[cfg(any(unix, test))]
+    #[cfg(unix)]
     pub fn snapshot_history(&self) -> Option<String> {
         self.history_source().capture()
     }
