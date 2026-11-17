@@ -612,6 +612,14 @@ impl HeadlessServer {
                 needs_render = false;
                 needs_full_render = false;
                 needs_graphics_render = false;
+                if self.app.has_pending_agent_resumes() {
+                    let now = Instant::now();
+                    self.app.sync_pending_agent_resume_deadline(now);
+                    needs_render = self
+                        .app
+                        .start_pending_agent_resumes(now, self.app.pending_agent_resume_due(now));
+                    needs_full_render = needs_render;
+                }
                 continue;
             }
 
@@ -781,7 +789,6 @@ impl HeadlessServer {
             client.request_recompute();
         }
         if !start_pending_agent_resumes {
-            self.app.pending_agent_resume_deadline = None;
             return;
         }
         let now = Instant::now();
@@ -3378,10 +3385,10 @@ impl HeadlessServer {
         changed |= self.app.handle_tab_bar_status_tasks(now);
         changed |= self.app.run_due_automations(std::time::SystemTime::now());
 
-        if geometry_dirty {
-            self.app.pending_agent_resume_deadline = None;
-        } else {
-            self.app.sync_pending_agent_resume_deadline(now);
+        // Output must not restart the theme grace period. When geometry is
+        // dirty, resume after rendering has computed the current layout.
+        self.app.sync_pending_agent_resume_deadline(now);
+        if !geometry_dirty {
             changed |= self
                 .app
                 .start_pending_agent_resumes(now, self.app.pending_agent_resume_due(now));
