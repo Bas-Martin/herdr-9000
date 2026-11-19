@@ -2020,21 +2020,15 @@ fn graceful_shutdown_sends_server_shutdown_to_client() {
 
     // The client should receive a ServerShutdown message
     // before the connection is closed, not just an abrupt EOF.
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let result = read_server_message(&mut stream);
-    match result {
-        Ok((variant, _payload)) => {
-            assert_eq!(
-                variant, SERVER_MESSAGE_SERVER_SHUTDOWN,
-                "expected ServerShutdown, got variant {variant}"
-            );
-        }
-        Err(e) => {
-            panic!("expected ServerShutdown message before connection close, got error: {e}");
-        }
-    }
+    assert!(
+        wait_for_message_variant(
+            &mut stream,
+            Duration::from_secs(5),
+            SERVER_MESSAGE_SERVER_SHUTDOWN,
+        )
+        .expect("read shutdown messages"),
+        "expected ServerShutdown before connection close"
+    );
 
     // Wait for the server to exit.
     spawned.close_master();
