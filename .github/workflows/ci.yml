@@ -199,6 +199,11 @@ jobs:
           $env:CARGO_INCREMENTAL = "1"
           just check
 
+      - name: Profile Explorer-owned editor launch
+        if: matrix.kind == 'windows'
+        timeout-minutes: 5
+        run: python scripts/profile_editor_launch.py
+
       - name: Check registry startup protection
         run: python scripts/check_registry_protection.py target/debug/herdr${{ runner.os == 'Windows' && '.exe' || '' }} herdr-dev
 
