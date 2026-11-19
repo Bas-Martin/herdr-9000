@@ -78,6 +78,7 @@ mod bootstrap;
 mod client_views;
 mod endpoint_requests;
 mod lifecycle;
+mod metadata;
 mod native_graphics;
 mod notifications;
 mod render;
@@ -214,6 +215,7 @@ pub struct HeadlessServer {
     popup_owner_tab_id: Option<String>,
     /// Process-local identity used to reject shell replacements from an earlier server boot.
     client_shell_boot_id: String,
+    metadata_refresh: metadata::MetadataRefresh,
     /// Outer window title last pushed, paired with the client that received it.
     /// Keying on the client means a newly attached terminal is written to even
     /// when the title itself has not changed, without every code path that
@@ -374,6 +376,7 @@ impl HeadlessServer {
                     .unwrap_or_default()
                     .as_nanos()
             ),
+            metadata_refresh: Default::default(),
             sent_window_title: None,
             api_window_title: None,
             server_keybindings,
@@ -536,6 +539,12 @@ impl HeadlessServer {
             }
 
             self.drain_client_config_reload_request();
+            if self.clients.values().any(ClientConnection::is_shell_client)
+                && self.metadata_refresh.apply(&mut self.app)
+            {
+                needs_render = true;
+                needs_full_render = true;
+            }
             self.sync_immediate_pty_sources();
             self.stream_host_mouse_capture_mode();
             self.stream_direct_terminal_keyboard_mode();
@@ -603,6 +612,14 @@ impl HeadlessServer {
                 needs_render = false;
                 needs_full_render = false;
                 needs_graphics_render = false;
+                if self.app.has_pending_agent_resumes() {
+                    let now = Instant::now();
+                    self.app.sync_pending_agent_resume_deadline(now);
+                    needs_render = self
+                        .app
+                        .start_pending_agent_resumes(now, self.app.pending_agent_resume_due(now));
+                    needs_full_render = needs_render;
+                }
                 continue;
             }
 
@@ -772,7 +789,6 @@ impl HeadlessServer {
             client.request_recompute();
         }
         if !start_pending_agent_resumes {
-            self.app.pending_agent_resume_deadline = None;
             return;
         }
         let now = Instant::now();
@@ -3369,10 +3385,10 @@ impl HeadlessServer {
         changed |= self.app.handle_tab_bar_status_tasks(now);
         changed |= self.app.run_due_automations(std::time::SystemTime::now());
 
-        if geometry_dirty {
-            self.app.pending_agent_resume_deadline = None;
-        } else {
-            self.app.sync_pending_agent_resume_deadline(now);
+        // Output must not restart the theme grace period. When geometry is
+        // dirty, resume after rendering has computed the current layout.
+        self.app.sync_pending_agent_resume_deadline(now);
+        if !geometry_dirty {
             changed |= self
                 .app
                 .start_pending_agent_resumes(now, self.app.pending_agent_resume_due(now));

@@ -166,7 +166,8 @@ impl App {
             self.next_auto_update_check,
             self.next_agent_manifest_update_check,
             self.agent_metadata_deadline,
-            self.pending_agent_resume_deadline,
+            self.pending_agent_resume_deadline
+                .filter(|deadline| !needs_render || *deadline > now),
             self.pending_host_appearance_deadline,
             self.session_save_deadline,
             self.next_tab_bar_status_deadline(),

@@ -452,8 +452,29 @@ impl HeadlessServer {
     }
 
     fn render_and_stream_with_graphics_limit(&mut self, graphics_frame_limit: usize) {
+        self.render_targets_and_stream(
+            render_targets(&self.clients, self.foreground_client_id),
+            graphics_frame_limit,
+        );
+    }
+
+    pub(super) fn render_and_stream_clients(&mut self, clients: &HashSet<u64>) {
+        let targets = render_targets(&self.clients, self.foreground_client_id)
+            .into_iter()
+            .filter(|target| clients.contains(&target.0))
+            .collect::<Vec<_>>();
+        if !targets.is_empty() {
+            crate::render_prof::counter("full_render.recipient_fallback", targets.len() as u64);
+            self.render_targets_and_stream(targets, MAX_GRAPHICS_FRAME_SIZE);
+        }
+    }
+
+    fn render_targets_and_stream(
+        &mut self,
+        render_targets: Vec<crate::server::clients::RenderTarget>,
+        graphics_frame_limit: usize,
+    ) {
         let full_started = crate::render_prof::timer();
-        let render_targets = render_targets(&self.clients, self.foreground_client_id);
 
         if render_targets.is_empty() {
             let (cols, rows) = self.effective_size;
@@ -558,6 +579,13 @@ impl HeadlessServer {
         }
 
         let mut broken_clients: Vec<u64> = Vec::new();
+        let metadata = render_targets
+            .iter()
+            .any(|target| matches!(target.4, ClientConnectionMode::ClientShell))
+            .then(|| {
+                self.metadata_refresh.request(&self.app, Instant::now());
+                self.app.session_metadata_snapshot()
+            });
         for (client_id, (cols, rows), cell_size, _is_foreground, mode) in render_targets {
             #[cfg(unix)]
             if matches!(mode, ClientConnectionMode::TerminalObserve { .. })
@@ -632,13 +660,15 @@ impl HeadlessServer {
                 let Some(client) = self.clients.get_mut(&client_id) else {
                     continue;
                 };
-                let (mut candidate, mut completions) = client_shell_snapshot(
-                    &self.app,
-                    &self.client_shell_boot_id,
-                    client.shell_projection_revision,
-                    None,
-                    location.as_ref(),
-                );
+                let (mut candidate, mut completions) =
+                    crate::server::client_shell::snapshot_from_metadata(
+                        &self.app,
+                        metadata.as_ref().expect("shell render metadata"),
+                        &self.client_shell_boot_id,
+                        client.shell_projection_revision,
+                        None,
+                        location.as_ref(),
+                    );
                 candidate.config_diagnostic = if client.shell_uses_endpoint_keybindings {
                     self.server_config_diagnostic.clone()
                 } else {

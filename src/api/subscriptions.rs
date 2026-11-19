@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use regex::Regex;
 
 use crate::api::event_hub::EventHistoryError;
@@ -44,6 +47,7 @@ pub(super) struct ActiveOutputMatchedSubscription {
     regex: Option<Regex>,
     strip_ansi: bool,
     currently_matching: bool,
+    last_read: Option<Arc<crate::api::schema::PaneReadResult>>,
     request_prefix: String,
 }
 
@@ -102,6 +106,82 @@ pub(super) enum ActiveSubscription {
     OutputMatched(ActiveOutputMatchedSubscription),
     AgentStatusChanged(Box<ActiveAgentStatusChangedSubscription>),
     ScrollChanged(ActiveScrollChangedSubscription),
+}
+
+// One connection poll owns these successful samples, bounded by its subscriptions.
+// Failures are never cached, so retries keep the requesting subscription's ID.
+#[derive(Default)]
+pub(super) struct PollSamples {
+    reads: HashMap<String, Vec<OutputSample>>,
+    panes: HashMap<String, (u64, Arc<crate::api::schema::PaneInfo>)>,
+}
+
+struct OutputSample {
+    source: crate::api::schema::ReadSource,
+    lines: Option<u32>,
+    strip_ansi: bool,
+    read: Arc<crate::api::schema::PaneReadResult>,
+}
+
+impl PollSamples {
+    fn read(
+        &mut self,
+        subscription: &ActiveOutputMatchedSubscription,
+        api_tx: &ApiRequestSender,
+    ) -> Result<Arc<crate::api::schema::PaneReadResult>, ErrorResponse> {
+        let source = output_match_read_source(&subscription.source);
+        if let Some(sample) = self.reads.get(&subscription.pane_id).and_then(|samples| {
+            samples.iter().find(|sample| {
+                sample.source == source
+                    && sample.lines == subscription.lines
+                    && sample.strip_ansi == subscription.strip_ansi
+            })
+        }) {
+            return Ok(Arc::clone(&sample.read));
+        }
+
+        let read = Arc::new(pane_read(
+            format!("{}:read", subscription.request_prefix),
+            &subscription.pane_id,
+            source,
+            subscription.lines,
+            subscription.strip_ansi,
+            api_tx,
+        )?);
+        self.reads
+            .entry(subscription.pane_id.clone())
+            .or_default()
+            .push(OutputSample {
+                source,
+                lines: subscription.lines,
+                strip_ansi: subscription.strip_ansi,
+                read: Arc::clone(&read),
+            });
+        Ok(read)
+    }
+
+    fn pane(
+        &mut self,
+        request_prefix: &str,
+        pane_id: &str,
+        api_tx: &ApiRequestSender,
+        event_hub: &EventHub,
+    ) -> Result<Arc<crate::api::schema::PaneInfo>, ErrorResponse> {
+        let sequence = event_hub.current_sequence();
+        if let Some((sample_sequence, pane)) = self.panes.get(pane_id) {
+            if *sample_sequence == sequence {
+                return Ok(Arc::clone(pane));
+            }
+        }
+        let pane = Arc::new(pane_get(format!("{request_prefix}:pane"), pane_id, api_tx)?);
+        // A snapshot spanning a history event cannot be reused by a subscriber
+        // that has already consumed that event.
+        if event_hub.current_sequence() == sequence {
+            self.panes
+                .insert(pane_id.to_string(), (sequence, Arc::clone(&pane)));
+        }
+        Ok(pane)
+    }
 }
 
 impl ActiveSubscription {
@@ -200,6 +280,7 @@ impl ActiveSubscription {
                     regex,
                     strip_ansi,
                     currently_matching: false,
+                    last_read: None,
                     request_prefix: format!("{request_id}:sub:{index}"),
                 }))
             }
@@ -296,6 +377,18 @@ impl ActiveSubscription {
                 }
                 Ok(matching)
             }
+            _ => self.poll_batch_with_samples(api_tx, event_hub, &mut PollSamples::default()),
+        }
+    }
+
+    pub(super) fn poll_batch_with_samples(
+        &mut self,
+        api_tx: &ApiRequestSender,
+        event_hub: &EventHub,
+        samples: &mut PollSamples,
+    ) -> Result<Vec<serde_json::Value>, ErrorBody> {
+        match self {
+            Self::Event(_) => self.poll_batch(api_tx, event_hub),
             Self::AgentStatusChanged(subscription) => {
                 let events = subscription_events_after(event_hub, subscription.last_sequence)?;
                 let mut matching = Vec::new();
@@ -306,8 +399,10 @@ impl ActiveSubscription {
                     }
                 }
                 if matching.is_empty() {
-                    if let Some(event) =
-                        subscription.poll_snapshot(api_tx, event_hub).ok().flatten()
+                    if let Some(event) = subscription
+                        .poll_snapshot_with_samples(api_tx, event_hub, samples)
+                        .ok()
+                        .flatten()
                     {
                         matching.push(serde_json::to_value(event).map_err(event_encoding_error)?);
                     }
@@ -316,8 +411,25 @@ impl ActiveSubscription {
             }
             // These subscriptions sample current state, not retained event history.
             // Keep their existing cadence even when a lifecycle batch was nonempty.
-            Self::OutputMatched(_) | Self::ScrollChanged(_) => {
-                Ok(self.poll(api_tx, event_hub).into_iter().collect())
+            Self::OutputMatched(subscription) => Ok(subscription
+                .poll_with_samples(api_tx, samples)
+                .and_then(|event| serde_json::to_value(event).ok())
+                .into_iter()
+                .collect()),
+            Self::ScrollChanged(subscription) => {
+                let pane = samples
+                    .pane(
+                        &subscription.request_prefix,
+                        &subscription.pane_id,
+                        api_tx,
+                        event_hub,
+                    )
+                    .ok();
+                Ok(pane
+                    .and_then(|pane| subscription.event_from_snapshot(pane))
+                    .and_then(|event| serde_json::to_value(event).ok())
+                    .into_iter()
+                    .collect())
             }
         }
     }
@@ -360,15 +472,23 @@ impl ActiveEventSubscription {
 
 impl ActiveOutputMatchedSubscription {
     fn poll(&mut self, api_tx: &ApiRequestSender) -> Option<SubscriptionEventEnvelope> {
-        let read = pane_read(
-            format!("{}:read", self.request_prefix),
-            &self.pane_id,
-            output_match_read_source(&self.source),
-            self.lines,
-            self.strip_ansi,
-            api_tx,
-        )
-        .ok()?;
+        self.poll_with_samples(api_tx, &mut PollSamples::default())
+    }
+
+    fn poll_with_samples(
+        &mut self,
+        api_tx: &ApiRequestSender,
+        samples: &mut PollSamples,
+    ) -> Option<SubscriptionEventEnvelope> {
+        let read = samples.read(self, api_tx).ok()?;
+        let unchanged = self
+            .last_read
+            .as_ref()
+            .is_some_and(|previous| previous.text == read.text);
+        self.last_read = Some(Arc::clone(&read));
+        if unchanged {
+            return None;
+        }
 
         let matched_line = match_output(&read.text, &self.matcher, self.regex.as_ref());
         match matched_line {
@@ -382,7 +502,7 @@ impl ActiveOutputMatchedSubscription {
                     data: SubscriptionEventData::PaneOutputMatched(PaneOutputMatchedEvent {
                         pane_id: read.pane_id.clone(),
                         matched_line,
-                        read,
+                        read: (*read).clone(),
                     }),
                 })
             }
@@ -473,6 +593,15 @@ impl ActiveAgentStatusChangedSubscription {
         api_tx: &ApiRequestSender,
         event_hub: &EventHub,
     ) -> Result<Option<SubscriptionEventEnvelope>, ErrorResponse> {
+        self.poll_snapshot_with_samples(api_tx, event_hub, &mut PollSamples::default())
+    }
+
+    fn poll_snapshot_with_samples(
+        &mut self,
+        api_tx: &ApiRequestSender,
+        event_hub: &EventHub,
+        samples: &mut PollSamples,
+    ) -> Result<Option<SubscriptionEventEnvelope>, ErrorResponse> {
         if event_hub.current_sequence() != self.last_sequence {
             return Ok(None);
         } else if let Some(event) = self.initial_event.take() {
@@ -483,11 +612,7 @@ impl ActiveAgentStatusChangedSubscription {
         }
 
         let before_snapshot_sequence = self.last_sequence;
-        let pane = pane_get(
-            format!("{}:pane", self.request_prefix),
-            &self.pane_id,
-            api_tx,
-        );
+        let pane = samples.pane(&self.request_prefix, &self.pane_id, api_tx, event_hub);
         let after_snapshot_sequence = event_hub.current_sequence();
         if after_snapshot_sequence != before_snapshot_sequence {
             return Ok(None);
@@ -503,15 +628,19 @@ impl ActiveAgentStatusChangedSubscription {
 
     fn event_from_snapshot(
         &mut self,
-        pane: crate::api::schema::PaneInfo,
+        pane: impl std::borrow::Borrow<crate::api::schema::PaneInfo>,
     ) -> Option<SubscriptionEventEnvelope> {
+        let pane = pane.borrow();
         let current_status = pane.agent_status;
-        let current_presentation = PanePresentationSnapshot::from(&pane);
+        let presentation_changed = self.last_presentation.as_ref().is_some_and(|previous| {
+            previous.title != pane.title
+                || previous.display_agent != pane.display_agent
+                || previous.state_labels != pane.state_labels
+        });
+        if self.last_presentation.is_none() || presentation_changed {
+            self.last_presentation = Some(PanePresentationSnapshot::from(pane));
+        }
         let previous_status = self.last_status.replace(current_status);
-        let previous_presentation = self.last_presentation.replace(current_presentation.clone());
-        let presentation_changed = previous_presentation
-            .as_ref()
-            .is_some_and(|previous| previous != &current_presentation);
         let status_changed = previous_status.is_some_and(|previous| previous != current_status);
         if !(status_changed || presentation_changed) {
             return None;
@@ -526,13 +655,13 @@ impl ActiveAgentStatusChangedSubscription {
         Some(SubscriptionEventEnvelope {
             event: SubscriptionEventKind::PaneAgentStatusChanged,
             data: SubscriptionEventData::PaneAgentStatusChanged(PaneAgentStatusChangedEvent {
-                pane_id: pane.pane_id,
-                workspace_id: pane.workspace_id,
+                pane_id: pane.pane_id.clone(),
+                workspace_id: pane.workspace_id.clone(),
                 agent_status: current_status,
-                agent: pane.agent,
-                title: pane.title,
-                display_agent: pane.display_agent,
-                state_labels: pane.state_labels,
+                agent: pane.agent.clone(),
+                title: pane.title.clone(),
+                display_agent: pane.display_agent.clone(),
+                state_labels: pane.state_labels.clone(),
             }),
         })
     }
@@ -551,8 +680,9 @@ impl ActiveScrollChangedSubscription {
 
     fn event_from_snapshot(
         &mut self,
-        pane: crate::api::schema::PaneInfo,
+        pane: impl std::borrow::Borrow<crate::api::schema::PaneInfo>,
     ) -> Option<SubscriptionEventEnvelope> {
+        let pane = pane.borrow();
         let scroll = pane.scroll;
         if self.last_scroll == scroll {
             return None;
@@ -563,8 +693,8 @@ impl ActiveScrollChangedSubscription {
         Some(SubscriptionEventEnvelope {
             event: SubscriptionEventKind::ScrollChanged,
             data: SubscriptionEventData::ScrollChanged(PaneScrollChangedEvent {
-                pane_id: pane.pane_id,
-                workspace_id: pane.workspace_id,
+                pane_id: pane.pane_id.clone(),
+                workspace_id: pane.workspace_id.clone(),
                 scroll,
             }),
         })

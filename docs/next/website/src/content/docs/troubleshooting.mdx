@@ -12,6 +12,12 @@ herdr status
 
 Also record your operating system, outer terminal name and version, whether the session is local or remote, and whether tmux is involved.
 
+For performance reports, start a separate named session with `HERDR_RENDER_PROF=1 herdr --session perf` and reproduce the same workload at a fixed terminal size. The profiler records full-render and retained-surface work, including per-client full-render fallbacks. Setting the variable on a new client does not enable profiling in an already-running server; leave existing working sessions alone.
+
+Clients viewing independent terminals can use different rendering paths. Clients sharing a terminal keep full-render fallback when one requires it, so an observer cannot consume pending updates needed by another client.
+
+Working-directory labels are refreshed in the background during activity and can briefly lag behind the terminal. Refresh requests during an in-flight probe or its cooldown are coalesced and run afterward; an otherwise idle session is not polled continuously. Commands that launch terminals still resolve the current directory directly. Optional pane-history checkpoints capture history in the save worker and reuse unchanged captures without truncating saved history; shutdown and destructive layout changes still wait for their checkpoint.
+
 ## The CJK IME window is misplaced or the cursor flickers on Windows
 
 Herdr defaults to a cell-drawn cursor on native Windows and WSL because native cursors can flicker, jump, or show stale positions while ConPTY-based multiplexers repaint the screen. A cell-drawn cursor cannot provide the native cursor anchor used by Korean, Japanese, and Chinese IME composition UI.

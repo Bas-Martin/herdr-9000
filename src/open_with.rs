@@ -115,8 +115,9 @@ fn nearest_solution(directory: &Path) -> std::io::Result<Option<PathBuf>> {
     let mut directories = vec![directory.to_path_buf()];
     let mut next_level = Vec::new();
     while !directories.is_empty() {
-        let mut nearest: Option<PathBuf> = None;
+        directories.sort_unstable();
         for current in directories.drain(..) {
+            let mut nearest: Option<PathBuf> = None;
             for entry in std::fs::read_dir(current)? {
                 let entry = entry?;
                 #[cfg(windows)]
@@ -150,9 +151,9 @@ fn nearest_solution(directory: &Path) -> std::io::Result<Option<PathBuf>> {
                     }
                 }
             }
-        }
-        if nearest.is_some() {
-            return Ok(nearest);
+            if nearest.is_some() {
+                return Ok(nearest);
+            }
         }
         std::mem::swap(&mut directories, &mut next_level);
     }

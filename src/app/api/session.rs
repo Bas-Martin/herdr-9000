@@ -14,16 +14,17 @@ impl App {
     }
 
     pub(crate) fn session_snapshot(&self) -> SessionSnapshot {
-        self.session_snapshot_with_pane_info(Self::pane_info)
+        self.session_snapshot_with_pane_info(Self::pane_info, false)
     }
 
     pub(crate) fn session_metadata_snapshot(&self) -> SessionSnapshot {
-        self.session_snapshot_with_pane_info(Self::pane_metadata)
+        self.session_snapshot_with_pane_info(Self::pane_cached_metadata, true)
     }
 
     fn session_snapshot_with_pane_info(
         &self,
         pane_info: fn(&Self, usize, crate::layout::PaneId) -> Option<PaneInfo>,
+        cached: bool,
     ) -> SessionSnapshot {
         let focused_workspace_id = self
             .state
@@ -42,8 +43,16 @@ impl App {
         let mut tabs = Vec::new();
         let mut layouts = Vec::new();
         let mut panes = Vec::new();
+        let mut agents = Vec::new();
         for (ws_idx, ws) in self.state.workspaces.iter().enumerate() {
-            workspaces.push(self.workspace_info(ws_idx));
+            workspaces.push(if cached {
+                self.workspace_info_with_label(
+                    ws_idx,
+                    ws.display_name_from_terminals(&self.state.terminals),
+                )
+            } else {
+                self.workspace_info(ws_idx)
+            });
             for tab_idx in 0..ws.tabs.len() {
                 if let Some(tab) = self.tab_info(ws_idx, tab_idx) {
                     tabs.push(tab);
@@ -51,13 +60,20 @@ impl App {
                 if let Some(layout) = self.pane_layout_snapshot(ws_idx, tab_idx) {
                     layouts.push(layout);
                 }
-                panes.extend(
-                    ws.tabs[tab_idx]
-                        .layout
-                        .pane_ids()
-                        .into_iter()
-                        .filter_map(|pane_id| pane_info(self, ws_idx, pane_id)),
-                );
+                for pane_id in ws.tabs[tab_idx].layout.pane_ids() {
+                    if let Some(pane) = pane_info(self, ws_idx, pane_id) {
+                        if let Some(terminal) = ws
+                            .terminal_id(pane_id)
+                            .and_then(|id| self.state.terminals.get(id))
+                            .filter(|terminal| terminal.is_agent_terminal())
+                        {
+                            if let Some(agent) = self.agent_info_from_pane(pane.clone(), terminal) {
+                                agents.push(agent);
+                            }
+                        }
+                        panes.push(pane);
+                    }
+                }
             }
         }
 
@@ -71,7 +87,7 @@ impl App {
             tabs,
             panes,
             layouts,
-            agents: self.collect_agent_infos(),
+            agents,
         }
     }
 }

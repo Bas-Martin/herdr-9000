@@ -1041,7 +1041,7 @@ impl Workspace {
             .first()
             .and_then(|tab| tab.terminal_id(tab.root_pane))
             .and_then(|terminal_id| terminals.get(terminal_id))
-            .map(|terminal| &terminal.cwd)
+            .map(|terminal| terminal.observed_cwd.cwd.as_ref().unwrap_or(&terminal.cwd))
             .unwrap_or(&self.identity_cwd);
         self.automatic_display_name_for_cwd(cwd)
     }

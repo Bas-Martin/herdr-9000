@@ -1635,6 +1635,7 @@ impl AppState {
                     return Vec::new();
                 };
                 if terminal.cwd != cwd {
+                    terminal.observed_cwd = Default::default();
                     terminal.cwd = cwd;
                     self.mark_session_dirty();
                 }

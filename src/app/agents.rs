@@ -409,7 +409,17 @@ impl App {
         if !terminal.is_agent_terminal() {
             return None;
         }
-        let pane = self.pane_metadata(ws_idx, pane_id)?;
+        self.agent_info_from_pane(self.pane_metadata(ws_idx, pane_id)?, terminal)
+    }
+
+    pub(super) fn agent_info_from_pane(
+        &self,
+        pane: crate::api::schema::PaneInfo,
+        terminal: &crate::terminal::TerminalState,
+    ) -> Option<crate::api::schema::AgentInfo> {
+        if !terminal.is_agent_terminal() {
+            return None;
+        }
         Some(crate::api::schema::AgentInfo {
             terminal_id: pane.terminal_id,
             name: terminal.agent_name.clone(),

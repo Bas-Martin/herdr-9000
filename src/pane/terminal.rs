@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -200,6 +201,9 @@ pub(crate) struct GhosttyPaneCore {
     pub dirty_collection_hook: Option<Box<dyn FnOnce() + Send>>,
     pub terminal: crate::ghostty::Terminal,
     synchronized_output_epoch: u64,
+    // The content sequence covers PTY writes, resize, and clear. Other export
+    // mutations invalidate this entry while holding the same core lock.
+    history_cache: Option<(u64, Option<Arc<String>>)>,
     #[cfg(windows)]
     recent_fallback: windows_recent_fallback::Cache,
     pub render_state: crate::ghostty::RenderState,
@@ -532,6 +536,7 @@ impl PaneTerminal {
         self.ghostty.recent_unwrapped_text_snapshot(lines)
     }
 
+    #[cfg(test)]
     pub fn recent_unwrapped_ansi(&self, lines: usize) -> String {
         self.ghostty.recent_unwrapped_ansi(lines)
     }
@@ -1186,6 +1191,7 @@ impl GhosttyPaneTerminal {
                 dirty_collection_hook: None,
                 terminal,
                 synchronized_output_epoch: 0,
+                history_cache: None,
                 #[cfg(windows)]
                 recent_fallback: windows_recent_fallback::Cache::default(),
                 render_state,
@@ -1218,6 +1224,7 @@ impl GhosttyPaneTerminal {
 
     pub fn apply_host_terminal_theme(&self, theme: crate::terminal_theme::TerminalTheme) {
         if let Ok(mut core) = self.core.lock() {
+            core.history_cache = None;
             let foreground_unowned = !core.child_default_foreground_changed;
             let background_unowned = !core.child_default_background_changed;
             core.host_terminal_theme = theme;
@@ -1253,6 +1260,7 @@ impl GhosttyPaneTerminal {
         appearance: Option<crate::terminal_theme::HostAppearance>,
     ) -> Option<Bytes> {
         let mut core = self.core.lock().ok()?;
+        core.history_cache = None;
         let color_scheme = appearance.map(|appearance| match appearance {
             crate::terminal_theme::HostAppearance::Dark => crate::ghostty::ColorScheme::Dark,
             crate::terminal_theme::HostAppearance::Light => crate::ghostty::ColorScheme::Light,
@@ -1301,13 +1309,17 @@ impl GhosttyPaneTerminal {
             .active_screen()
             .map(|screen| screen == crate::ghostty::ActiveScreen::Alternate)
             .unwrap_or(false);
-        restore_host_terminal_theme_if_needed(
+        let restored = restore_host_terminal_theme_if_needed(
             &mut core,
             pane_id,
             shell_pid,
             alternate_screen,
             foreground_job.as_ref(),
-        )
+        );
+        if restored {
+            core.history_cache = None;
+        }
+        restored
     }
 
     pub fn terminal_title(&self) -> Option<String> {
@@ -1582,6 +1594,7 @@ impl GhosttyPaneTerminal {
         let Ok(mut core) = self.core.lock() else {
             return;
         };
+        core.history_cache = None;
         core.kitty_keyboard.observe(ansi.as_bytes());
         core.terminal.write(ansi.as_bytes());
         #[cfg(windows)]
@@ -1596,6 +1609,7 @@ impl GhosttyPaneTerminal {
         let Ok(mut core) = self.core.lock() else {
             return;
         };
+        core.history_cache = None;
 
         if input_state.alternate_screen {
             core.terminal.write(b"\x1b[?1049h");
@@ -1671,6 +1685,7 @@ impl GhosttyPaneTerminal {
         let Ok(mut core) = self.core.lock() else {
             return;
         };
+        core.history_cache = None;
         core.kitty_keyboard.observe(ansi.as_bytes());
         core.terminal.write(ansi.as_bytes());
         if let Ok(mut key_encoder) = self.key_encoder.lock() {
@@ -2259,6 +2274,7 @@ impl GhosttyPaneTerminal {
             .unwrap_or_default()
     }
 
+    #[cfg(test)]
     pub fn recent_unwrapped_ansi(&self, lines: usize) -> String {
         self.recent_unwrapped_ansi_snapshot(lines).text
     }
@@ -2269,6 +2285,28 @@ impl GhosttyPaneTerminal {
             .ok()
             .and_then(|mut core| ghostty_recent_ansi_snapshot(&mut core, lines, true).ok())
             .unwrap_or_default()
+    }
+
+    pub(super) fn snapshot_history(&self, content_seq: &AtomicU64) -> Option<Arc<String>> {
+        let mut core = self.core.lock().ok()?;
+        let revision = content_seq.load(Ordering::Acquire);
+        if revision.is_multiple_of(2) {
+            if let Some((cached_revision, history)) = &core.history_cache {
+                if *cached_revision == revision && content_seq.load(Ordering::Acquire) == revision {
+                    return history.clone();
+                }
+            }
+        }
+
+        let ansi = ghostty_recent_ansi(&mut core, usize::MAX, true).ok()?;
+        let history = (!ansi.trim().is_empty()).then(|| Arc::new(ansi));
+        // Windows fallback reads can refresh retained text without a PTY write.
+        // A pending writer also forbids associating this export with its revision.
+        core.history_cache = (!cfg!(windows)
+            && revision.is_multiple_of(2)
+            && content_seq.load(Ordering::Acquire) == revision)
+            .then(|| (revision, history.clone()));
+        history
     }
 
     pub(crate) fn link_regions_at(

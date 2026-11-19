@@ -523,7 +523,6 @@ impl HeadlessServer {
             client.request_recompute();
         }
         if !start_pending_agent_resumes {
-            self.app.pending_agent_resume_deadline = None;
             return;
         }
         let now = Instant::now();
