@@ -116,6 +116,8 @@ Right-click a local Git workspace or worktree and choose **Open With ›** to op
 
 Visual Studio opens the nearest `.sln` or `.slnx` inside the selected checkout. Solutions at the checkout root take precedence over solutions in subdirectories; ties at the same directory depth are resolved by case-sensitive relative path order. Filename extensions are matched case-insensitively. The search never visits parent directories, `.git` directories, symbolic links, or Windows junctions. If no solution is found, Visual Studio opens the checkout directory as before. A directory read failure is reported instead of silently selecting a different solution. VS Code and Windows Explorer still open the checkout directory.
 
+At each depth, the solution search visits directories in path order and stops once it has found the first directory containing a solution. Later directories at that depth cannot change the result and are not scanned. A checkout without any solution still requires a complete search before opening the directory.
+
 The Windows installer detects VS Code and Visual Studio on installation and every update. Missing or removed installations are detected again when opening a worktree. Visual Studio and Windows Explorer require Windows; VS Code also works on Linux and macOS.
 
 In **Settings → Open With**, directly after **Integrations**, enter each application's full executable path and choose **Save**. Leave a field empty to use automatic detection. Tab/Shift+Tab or Up/Down selects a field; Alt+Left/Right switches settings tabs. Manual paths persist across restarts and updates and override detection independently:
