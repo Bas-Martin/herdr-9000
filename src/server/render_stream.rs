@@ -1,6 +1,6 @@
 //! Virtual rendering helpers for headless client frame streaming.
 
-use ratatui::backend::{Backend, ClearType, TestBackend, WindowSize};
+use ratatui::backend::{Backend, ClearType, WindowSize};
 use ratatui::layout::{Position, Rect, Size};
 
 use crate::app::state::AppState;
@@ -454,20 +454,18 @@ impl PreparedRender {
 }
 
 struct CursorTrackingBackend {
-    inner: TestBackend,
+    buffer: ratatui::buffer::Buffer,
+    cursor_position: Position,
     rendered_cursor: Option<Position>,
 }
 
 impl CursorTrackingBackend {
     fn new(width: u16, height: u16) -> Self {
         Self {
-            inner: TestBackend::new(width, height),
+            buffer: ratatui::buffer::Buffer::empty(Rect::new(0, 0, width, height)),
+            cursor_position: Position::ORIGIN,
             rendered_cursor: None,
         }
-    }
-
-    fn buffer(&self) -> &ratatui::buffer::Buffer {
-        self.inner.buffer()
     }
 
     fn rendered_cursor(&self) -> Option<CursorState> {
@@ -487,52 +485,69 @@ impl Backend for CursorTrackingBackend {
     where
         I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
     {
-        self.inner.draw(content)
-    }
-
-    fn append_lines(&mut self, n: u16) -> Result<(), Self::Error> {
-        self.inner.append_lines(n)
+        for (x, y, cell) in content {
+            self.buffer[(x, y)] = cell.clone();
+        }
+        Ok(())
     }
 
     fn hide_cursor(&mut self) -> Result<(), Self::Error> {
-        self.inner.hide_cursor()?;
         self.rendered_cursor = None;
         Ok(())
     }
 
     fn show_cursor(&mut self) -> Result<(), Self::Error> {
-        self.inner.show_cursor()
+        self.rendered_cursor = Some(self.cursor_position);
+        Ok(())
     }
 
     fn get_cursor_position(&mut self) -> Result<Position, Self::Error> {
-        self.inner.get_cursor_position()
+        Ok(self.cursor_position)
     }
 
     fn set_cursor_position<P: Into<Position>>(&mut self, position: P) -> Result<(), Self::Error> {
         let position = position.into();
-        self.inner.set_cursor_position(position)?;
+        self.cursor_position = position;
         self.rendered_cursor = Some(position);
         Ok(())
     }
 
     fn clear(&mut self) -> Result<(), Self::Error> {
-        self.inner.clear()
+        self.buffer.reset();
+        Ok(())
     }
 
     fn clear_region(&mut self, clear_type: ClearType) -> Result<(), Self::Error> {
-        self.inner.clear_region(clear_type)
+        let width = usize::from(self.buffer.area.width);
+        let row = usize::from(self.cursor_position.y) * width;
+        let index = row + usize::from(self.cursor_position.x);
+        let len = self.buffer.content.len();
+        let range = match clear_type {
+            ClearType::All => 0..len,
+            ClearType::AfterCursor => index.saturating_add(1).min(len)..len,
+            ClearType::BeforeCursor => 0..index.min(len),
+            ClearType::CurrentLine => row.min(len)..(row + width).min(len),
+            ClearType::UntilNewLine => index.min(len)..(row + width).min(len),
+        };
+        for cell in &mut self.buffer.content[range] {
+            cell.reset();
+        }
+        Ok(())
     }
 
     fn size(&self) -> Result<Size, Self::Error> {
-        self.inner.size()
+        Ok(self.buffer.area.as_size())
     }
 
     fn window_size(&mut self) -> Result<WindowSize, Self::Error> {
-        self.inner.window_size()
+        Ok(WindowSize {
+            columns_rows: self.buffer.area.as_size(),
+            pixels: Size::new(640, 480),
+        })
     }
 
     fn flush(&mut self) -> Result<(), Self::Error> {
-        self.inner.flush()
+        Ok(())
     }
 }
 
@@ -559,15 +574,15 @@ pub(crate) fn render_tab_surface_virtual(
     let hyperlinks = crate::ui::tab_surface_hyperlinks(app_state, terminal_runtimes, surface);
 
     let backend = CursorTrackingBackend::new(area.width, area.height);
-    let mut terminal = ratatui::Terminal::new(backend).expect("TestBackend::new should never fail");
+    let mut terminal = ratatui::Terminal::new(backend).expect("virtual backend is infallible");
     terminal
         .draw(|frame| {
             crate::ui::render_tab_surface(app_state, terminal_runtimes, surface, frame);
         })
-        .expect("render to TestBackend should never fail");
+        .expect("virtual rendering is infallible");
 
     (
-        terminal.backend().buffer().clone(),
+        std::mem::take(&mut terminal.backend_mut().buffer),
         cursor,
         hyperlinks,
         layout,
@@ -581,15 +596,15 @@ pub(crate) fn render_terminal_virtual(
 ) -> (ratatui::buffer::Buffer, Option<CursorState>) {
     let suppress_cursor = runtime.synchronized_output_active();
     let backend = CursorTrackingBackend::new(area.width, area.height);
-    let mut terminal = ratatui::Terminal::new(backend).expect("TestBackend::new should never fail");
+    let mut terminal = ratatui::Terminal::new(backend).expect("virtual backend is infallible");
 
     terminal
         .draw(|frame| {
             runtime.render(frame, area, true);
         })
-        .expect("render to TestBackend should never fail");
+        .expect("virtual rendering is infallible");
 
-    let buffer = terminal.backend().buffer().clone();
+    let buffer = std::mem::take(&mut terminal.backend_mut().buffer);
     let cursor = (!suppress_cursor)
         .then(|| runtime.cursor_state(area, true))
         .flatten()

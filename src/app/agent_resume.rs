@@ -50,6 +50,14 @@ impl App {
         now: Instant,
         allow_empty_theme: bool,
     ) -> bool {
+        if !self.has_pending_agent_resumes() {
+            self.pending_agent_resume_deadline = None;
+            self.next_agent_resume_at = None;
+            return false;
+        }
+        if self.state.host_terminal_theme.is_empty() && !allow_empty_theme {
+            return false;
+        }
         // Geometry/theme events can also enter here; they must not bypass spacing.
         if self.next_agent_resume_at.is_some_and(|next| now < next) {
             return false;

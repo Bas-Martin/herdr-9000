@@ -154,65 +154,81 @@ pub(crate) fn launch(
     target: &Path,
 ) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::{
-        Foundation::CloseHandle,
-        System::Threading::{GetExitCodeProcess, WaitForSingleObject},
-        UI::Shell::{
-            ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS,
-            SHELLEXECUTEINFOW,
+    use windows::{
+        core::{Interface, BSTR},
+        Win32::{
+            System::{
+                Com::{
+                    CoCreateInstance, CoInitializeEx, CoUninitialize, IDispatch, IServiceProvider,
+                    CLSCTX_LOCAL_SERVER, COINIT_MULTITHREADED,
+                },
+                Variant::VARIANT,
+            },
+            UI::Shell::{
+                IShellBrowser, IShellDispatch2, IShellFolderViewDual, IShellWindows,
+                SID_STopLevelBrowser, ShellWindows, CSIDL_DESKTOP, SVGIO_BACKGROUND, SWC_DESKTOP,
+                SWFO_NEEDDISPATCH,
+            },
         },
     };
-    let file = executable
-        .unwrap_or(target)
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect::<Vec<_>>();
-    let parameters = executable.map(|_| {
-        let target = super::quote_windows_command_line_arg(&target.to_string_lossy());
-        if application == Application::VsCode {
-            format!("--new-window {target}")
-        } else {
-            target
+
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
         }
-    });
-    let parameters = parameters
-        .as_ref()
-        .map(|value| value.encode_utf16().chain(Some(0)).collect::<Vec<_>>());
-    let verb = windows::core::w!("open");
-    let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
-    info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-    info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC;
-    info.lpVerb = verb.as_ptr();
-    info.lpFile = file.as_ptr();
-    info.lpParameters = parameters
-        .as_ref()
-        .map_or(std::ptr::null(), |value| value.as_ptr());
-    info.nShow = 1;
-    if unsafe { ShellExecuteExW(&mut info) } == 0 {
-        return Err(format!(
-            "Cannot launch {}: {}",
-            application.name(),
-            std::io::Error::last_os_error()
-        ));
     }
-    // Shell launches can reuse an existing GUI process and return no process handle.
-    // Windows reaps processes itself; always release any returned handle.
-    if !info.hProcess.is_null() {
-        let mut exit_code = 0;
-        let exited = unsafe { WaitForSingleObject(info.hProcess, 0) } == 0;
-        let has_code = exited && unsafe { GetExitCodeProcess(info.hProcess, &mut exit_code) } != 0;
+
+    let launch_error = |error| {
+        format!(
+            "Cannot launch {} through Windows Explorer: {error}",
+            application.name()
+        )
+    };
+    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED).ok() }.map_err(launch_error)?;
+    let _apartment = ComApartment;
+
+    // Use the desktop's automation object, not an in-process Shell object:
+    // Explorer must own the launch, environment and lifetime, never Herdr's console.
+    let result = (|| -> windows::core::Result<()> {
         unsafe {
-            CloseHandle(info.hProcess);
+            let shell_windows: IShellWindows =
+                CoCreateInstance(&ShellWindows, None, CLSCTX_LOCAL_SERVER)?;
+            let mut hwnd = 0;
+            let desktop = shell_windows.FindWindowSW(
+                &VARIANT::from(CSIDL_DESKTOP as i32),
+                &VARIANT::default(),
+                SWC_DESKTOP,
+                &mut hwnd,
+                SWFO_NEEDDISPATCH,
+            )?;
+            let services: IServiceProvider = desktop.cast()?;
+            let browser: IShellBrowser = services.QueryService(&SID_STopLevelBrowser)?;
+            let view: IDispatch = browser
+                .QueryActiveShellView()?
+                .GetItemObject(SVGIO_BACKGROUND)?;
+            let folder: IShellFolderViewDual = view.cast()?;
+            let shell: IShellDispatch2 = folder.Application()?.cast()?;
+            let file = BSTR::from_wide(
+                &executable
+                    .unwrap_or(target)
+                    .as_os_str()
+                    .encode_wide()
+                    .collect::<Vec<_>>(),
+            );
+            let parameters = executable
+                .map(|_| super::quote_windows_command_line_arg(&target.to_string_lossy()))
+                .unwrap_or_default();
+            shell.ShellExecute(
+                &file,
+                &VARIANT::from(parameters.as_str()),
+                &VARIANT::default(),
+                &VARIANT::from("open"),
+                &VARIANT::from(1i32),
+            )
         }
-        if has_code && exit_code != 0 {
-            return Err(format!(
-                "{} exited with code {exit_code}",
-                application.name()
-            ));
-        }
-    }
-    Ok(())
+    })();
+    result.map_err(launch_error)
 }
 
 #[cfg(not(windows))]
@@ -232,7 +248,6 @@ pub(crate) fn launch(
     })?;
     let mut command = tokio::process::Command::new(executable);
     command
-        .arg("--new-window")
         .arg(directory)
         .stdin(Stdio::null())
         .stdout(Stdio::null())

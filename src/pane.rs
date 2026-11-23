@@ -27,6 +27,7 @@ use crate::render_signal::RenderSignal;
 mod agent_detection;
 mod background_agent;
 mod cursor;
+mod cwd;
 mod input;
 mod kitty_keyboard;
 mod osc;
@@ -42,6 +43,7 @@ use self::agent_detection::{
     ScreenDetectionPublishInput, AGENT_PENDING_IDLE_RECHECK, AGENT_STARTUP_GRACE_WINDOW,
 };
 use self::background_agent::{AgentJobStatus, AgentJobTracker};
+pub(crate) use self::cwd::CwdSnapshot;
 #[cfg(test)]
 pub(crate) use self::terminal::test_encode_key_for_app;
 #[cfg(unix)]
@@ -1321,6 +1323,23 @@ impl TerminalCompressionWake {
     fn wake(&self) {
         self.generation.fetch_add(1, Ordering::Release);
         self.notify.notify_one();
+    }
+}
+
+/// Owned read handles; capturing a source never locks or exports the terminal.
+#[derive(Clone)]
+pub(crate) struct TerminalHistorySource {
+    terminal: Arc<PaneTerminal>,
+    content_seq: Arc<AtomicU64>,
+    compression: TerminalCompressionWake,
+}
+
+impl TerminalHistorySource {
+    pub(crate) fn capture(&self) -> Option<String> {
+        let history = self.terminal.ghostty.snapshot_history(&self.content_seq);
+        self.compression.wake();
+        // Persistence keeps its existing String DTO; copy outside the core lock.
+        history.map(|ansi| ansi.as_ref().clone())
     }
 }
 
@@ -3560,21 +3579,23 @@ impl PaneRuntime {
         result
     }
 
-    pub fn recent_unwrapped_ansi(&self, lines: usize) -> String {
-        let result = self.terminal.recent_unwrapped_ansi(lines);
-        self.compression.wake();
-        result
-    }
-
     pub(crate) fn recent_unwrapped_ansi_snapshot(&self, lines: usize) -> TerminalReadSnapshot {
         let result = self.terminal.recent_unwrapped_ansi_snapshot(lines);
         self.compression.wake();
         result
     }
 
+    pub(crate) fn history_source(&self) -> TerminalHistorySource {
+        TerminalHistorySource {
+            terminal: self.terminal.clone(),
+            content_seq: self.content_seq.clone(),
+            compression: self.compression.notifier(),
+        }
+    }
+
+    #[cfg(unix)]
     pub fn snapshot_history(&self) -> Option<String> {
-        let ansi = self.recent_unwrapped_ansi(usize::MAX);
-        (!ansi.trim().is_empty()).then_some(ansi)
+        self.history_source().capture()
     }
 
     pub fn extract_selection(&self, selection: &crate::selection::Selection) -> Option<String> {

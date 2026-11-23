@@ -411,8 +411,17 @@ impl TerminalRuntime {
         self.0.recent_unwrapped_ansi_snapshot(lines)
     }
 
+    #[cfg(all(test, unix))]
     pub fn snapshot_history(&self) -> Option<String> {
         self.0.snapshot_history()
+    }
+
+    pub(crate) fn history_source(&self) -> crate::pane::TerminalHistorySource {
+        self.0.history_source()
+    }
+
+    pub(crate) fn cwd_probe(&self) -> impl FnOnce() -> crate::pane::CwdSnapshot + Send + 'static {
+        self.0.cwd_probe()
     }
 
     pub fn extract_selection(&self, selection: &crate::selection::Selection) -> Option<String> {

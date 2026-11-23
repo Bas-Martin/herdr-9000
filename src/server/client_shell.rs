@@ -24,7 +24,27 @@ pub(super) fn snapshot_with_completions(
     protocol::ClientShellSnapshot,
     protocol::endpoint::EndpointAgentCompletions,
 ) {
-    let snapshot = app.session_metadata_snapshot();
+    snapshot_from_metadata(
+        app,
+        &app.session_metadata_snapshot(),
+        boot_id,
+        revision,
+        config_diagnostic,
+        location,
+    )
+}
+
+pub(super) fn snapshot_from_metadata(
+    app: &app::App,
+    snapshot: &crate::api::schema::SessionSnapshot,
+    boot_id: &str,
+    revision: u64,
+    config_diagnostic: Option<&str>,
+    location: Option<&crate::server::clients::ClientShellLocation>,
+) -> (
+    protocol::ClientShellSnapshot,
+    protocol::endpoint::EndpointAgentCompletions,
+) {
     let completions = protocol::endpoint::EndpointAgentCompletions {
         boot_id: boot_id.to_owned(),
         revision,
@@ -57,17 +77,21 @@ pub(super) fn snapshot_with_completions(
         .or_else(|| snapshot.focused_pane_id.clone());
     let workspaces = snapshot
         .workspaces
-        .into_iter()
+        .iter()
         .zip(&app.state.workspaces)
         .enumerate()
         .map(|(workspace_index, (workspace, state))| {
-            let mut tokens = workspace.tokens.into_iter().collect::<Vec<_>>();
+            let mut tokens = workspace
+                .tokens
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<Vec<_>>();
             tokens.sort_by(|left, right| left.0.cmp(&right.0));
-            let workspace_id = workspace.workspace_id;
+            let workspace_id = workspace.workspace_id.clone();
             let active_tab_id = location
                 .and_then(|location| location.active_tab_ids.get(&workspace_id))
                 .cloned()
-                .unwrap_or(workspace.active_tab_id);
+                .unwrap_or_else(|| workspace.active_tab_id.clone());
             let active_tab_index =
                 app.parse_tab_id(&active_tab_id)
                     .and_then(|(tab_workspace_index, tab_index)| {
@@ -78,29 +102,29 @@ pub(super) fn snapshot_with_completions(
                 workspace_id,
                 active_tab_id,
                 new_workspace_cwd: app
-                    .resolved_new_workspace_cwd_from_tab(workspace_index, active_tab_index)
+                    .cached_new_workspace_cwd_from_tab(workspace_index, active_tab_index)
                     .display()
                     .to_string(),
                 number: workspace.number,
-                label: workspace.label,
+                label: workspace.label.clone(),
                 custom_label: state.custom_name.is_some(),
                 branch: state.branch(),
                 git_ahead_behind: state.git_ahead_behind(),
                 tokens,
-                worktree: workspace
-                    .worktree
-                    .map(|worktree| protocol::ClientShellWorktree {
-                        key: worktree.repo_key,
-                        label: worktree.repo_name,
+                worktree: workspace.worktree.as_ref().map(|worktree| {
+                    protocol::ClientShellWorktree {
+                        key: worktree.repo_key.clone(),
+                        label: worktree.repo_name.clone(),
                         is_linked_worktree: worktree.is_linked_worktree,
-                    }),
+                    }
+                }),
                 agent_status: workspace.agent_status,
             }
         })
         .collect();
     let tabs = snapshot
         .tabs
-        .into_iter()
+        .iter()
         .zip(
             app.state
                 .workspaces
@@ -108,13 +132,13 @@ pub(super) fn snapshot_with_completions(
                 .flat_map(|workspace| workspace.tabs.iter()),
         )
         .map(|(tab, state)| {
-            let tab_id = tab.tab_id;
+            let tab_id = tab.tab_id.clone();
             protocol::ClientShellTab {
                 focused: focused_tab_id.as_deref() == Some(tab_id.as_str()),
                 tab_id,
-                workspace_id: tab.workspace_id,
+                workspace_id: tab.workspace_id.clone(),
                 number: tab.number,
-                label: tab.label,
+                label: tab.label.clone(),
                 custom_label: !state.is_auto_named(),
                 zoomed: state.zoomed,
                 agent_status: tab.agent_status,
@@ -123,9 +147,9 @@ pub(super) fn snapshot_with_completions(
         .collect();
     let panes = snapshot
         .panes
-        .into_iter()
+        .iter()
         .map(|pane| {
-            let pane_id = pane.pane_id;
+            let pane_id = pane.pane_id.clone();
             let focused = focused_pane_id.as_deref() == Some(pane_id.as_str());
             let right_click_passthrough = app
                 .parse_pane_id(&pane_id)
@@ -138,11 +162,11 @@ pub(super) fn snapshot_with_completions(
                 .is_some_and(|pane| pane.right_click_passthrough);
             protocol::ClientShellPane {
                 pane_id,
-                workspace_id: pane.workspace_id,
-                tab_id: pane.tab_id,
-                label: pane.label,
-                cwd: pane.cwd,
-                foreground_cwd: pane.foreground_cwd,
+                workspace_id: pane.workspace_id.clone(),
+                tab_id: pane.tab_id.clone(),
+                label: pane.label.clone(),
+                cwd: pane.cwd.clone(),
+                foreground_cwd: pane.foreground_cwd.clone(),
                 focused,
                 right_click_passthrough,
             }
@@ -150,24 +174,32 @@ pub(super) fn snapshot_with_completions(
         .collect();
     let agents = snapshot
         .agents
-        .into_iter()
+        .iter()
         .map(|agent| {
-            let pane_id = agent.pane_id;
+            let pane_id = agent.pane_id.clone();
             let focused = focused_pane_id.as_deref() == Some(pane_id.as_str());
-            let mut state_labels = agent.state_labels.into_iter().collect::<Vec<_>>();
+            let mut state_labels = agent
+                .state_labels
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<Vec<_>>();
             state_labels.sort_by(|left, right| left.0.cmp(&right.0));
-            let mut tokens = agent.tokens.into_iter().collect::<Vec<_>>();
+            let mut tokens = agent
+                .tokens
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect::<Vec<_>>();
             tokens.sort_by(|left, right| left.0.cmp(&right.0));
             protocol::ClientShellAgent {
                 pane_id,
-                workspace_id: agent.workspace_id,
-                tab_id: agent.tab_id,
-                name: agent.name,
-                display_agent: agent.display_agent,
-                agent: agent.agent,
-                title: agent.title,
-                terminal_title: agent.terminal_title,
-                terminal_title_stripped: agent.terminal_title_stripped,
+                workspace_id: agent.workspace_id.clone(),
+                tab_id: agent.tab_id.clone(),
+                name: agent.name.clone(),
+                display_agent: agent.display_agent.clone(),
+                agent: agent.agent.clone(),
+                title: agent.title.clone(),
+                terminal_title: agent.terminal_title.clone(),
+                terminal_title_stripped: agent.terminal_title_stripped.clone(),
                 agent_status: agent.agent_status,
                 state_change_seq: agent.state_change_seq,
                 state_labels,

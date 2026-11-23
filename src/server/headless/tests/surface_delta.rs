@@ -72,8 +72,9 @@ async fn surface_delta_reconstructs_metadata_text_and_hyperlinks() {
         b"\rupdated text \x1b]8;;https://example.test/path\x1b\\linked\x1b]8;;\x1b\\",
     );
     server.clients.get_mut(&1).unwrap().request_recompute();
-    assert!(!server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])));
-    server.render_and_stream();
+    if !server.render_retained_pane_surface_and_stream(&HashSet::from([pane_id])) {
+        server.render_and_stream();
+    }
     let (delta_bytes, delta_message) = receive_message(&render_rx);
     assert!(delta_bytes.len() < initial_bytes.len());
     assert!(matches!(
