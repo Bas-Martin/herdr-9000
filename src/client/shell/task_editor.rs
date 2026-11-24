@@ -52,7 +52,7 @@ pub(super) fn render_task_editor_overlay(
 
     let path_area = Rect::new(inner.x, inner.y.saturating_add(3), inner.width, 1);
     let path_style = if editor.field == ClientTaskFileEditorField::Path {
-        base.fg(contrast(p))
+        base.fg(p.accent_foreground())
             .bg(p.accent)
             .add_modifier(Modifier::BOLD)
     } else {
@@ -108,7 +108,7 @@ pub(super) fn render_task_editor_overlay(
         save,
         " ctrl+s save ",
         Style::default()
-            .fg(contrast(p))
+            .fg(p.accent_foreground())
             .bg(p.accent)
             .add_modifier(Modifier::BOLD)
             .remove_modifier(Modifier::DIM),

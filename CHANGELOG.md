@@ -5,6 +5,7 @@
 ### Fixed
 - New worktrees now preview and use the selected project's worktree root, including when an endpoint omits it from its worktree listing.
 - Creating a worktree from an `origin/` base now fetches that branch first and stops if the fetch fails.
+- Selected tabs, rows, and controls stay readable on light terminal themes.
 
 ## [0.9.5] - 2026-10-14
 
