@@ -111,7 +111,7 @@ pub(super) fn render_tmux_panes_overlay(
                 )
             };
             let style = if index == overlay.selected {
-                base.fg(contrast(p))
+                base.fg(p.accent_foreground())
                     .bg(p.accent)
                     .add_modifier(Modifier::BOLD)
             } else {

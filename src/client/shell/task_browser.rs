@@ -93,7 +93,7 @@ pub(super) fn render_task_browser_overlay(
                 task.task_id, task.name, status, location
             );
             let style = if index == browser.selected {
-                base.fg(contrast(p))
+                base.fg(p.accent_foreground())
                     .bg(p.accent)
                     .add_modifier(Modifier::BOLD)
             } else {
